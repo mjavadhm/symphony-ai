@@ -16,12 +16,15 @@ workflows:
         - telegram
         
     scripts:
+      - name: Fetch Git Submodules (Just in case)
+        script: git submodule update --init --recursive
+
       - name: Grant Execute Permission for Gradlew
         script: chmod +x ./gradlew
         
-      - name: Build Debug APK
+      - name: Build Debug APK (Clean & Optimized)
         script: ./gradlew clean assembleDebug --stacktrace --info --max-workers=2
-        
+             
       - name: Send APK to Telegram
         script: |
           echo "Sending APK to Telegram..."
