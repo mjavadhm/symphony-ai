@@ -1,7 +1,7 @@
 workflows:
   android-native-workflow:
     name: Android Build
-    instance_type: linux_x86_64
+    instance_type: linux
     environment:
       java: 17
     scripts:
