@@ -22,6 +22,11 @@ workflows:
       - name: Grant Execute Permission for Gradlew
         script: chmod +x ./gradlew
         
+      - name: Generate Translations (Phrasey)
+        script: |
+          npm install
+          npm run i18n:build
+        
       - name: Build Debug APK (Clean & Optimized)
         script: ./gradlew clean assembleDebug --stacktrace --info --max-workers=2
              
