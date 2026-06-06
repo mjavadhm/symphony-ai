@@ -18,7 +18,7 @@ room = "2.6.1"
 android-gradle-plugin = "8.7.3"
 kotlin-gradle-plugin = "2.1.0"
 kotlin-serialization-plugin = "2.1.0"
-ksp-plugin = "2.1.0-1.0.29"
+ksp-plugin = "2.3.9"
 
 compile-sdk = "35"
 min-sdk = "28"
