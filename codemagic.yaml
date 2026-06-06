@@ -2,12 +2,36 @@ workflows:
   android-native-workflow:
     name: Android Build
     instance_type: mac_mini_m1
+    
+    triggering:
+      events:
+        - push
+      branch_patterns:
+        - pattern: 'main'
+        - pattern: 'master'
+        
     environment:
       java: 17
+      groups:
+        - telegram
+        
     scripts:
       - name: Grant Execute Permission for Gradlew
         script: chmod +x ./gradlew
+        
+      # اضافه کردن پرچم‌های دیباگ و محدود کردن فشار به سرور
       - name: Build Debug APK
-        script: ./gradlew assembleDebug
+        script: ./gradlew assembleDebug --stacktrace --info --max-workers=2
+        
+      - name: Send APK to Telegram
+        script: |
+          echo "Sending APK to Telegram..."
+          APK_PATH=$(find app/build/outputs/apk/debug/ -name "*.apk" | head -n 1)
+          
+          curl -F chat_id="$TELEGRAM_CHAT_ID" \
+               -F document=@"$APK_PATH" \
+               -F caption="🚀 newbuild🛠" \
+               https://api.telegram.org/bot$TELEGRAM_BOT_TOKEN/sendDocument
+
     artifacts:
       - app/build/outputs/apk/debug/*.apk
