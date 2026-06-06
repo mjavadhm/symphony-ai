@@ -1,0 +1,13 @@
+workflows:
+  android-native-workflow:
+    name: Android Build
+    instance_type: linux_x86_64
+    environment:
+      java: 17
+    scripts:
+      - name: Grant Execute Permission for Gradlew
+        script: chmod +x ./gradlew
+      - name: Build Debug APK
+        script: ./gradlew assembleDebug
+    artifacts:
+      - app/build/outputs/apk/debug/*.apk
