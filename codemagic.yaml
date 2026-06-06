@@ -19,9 +19,8 @@ workflows:
       - name: Grant Execute Permission for Gradlew
         script: chmod +x ./gradlew
         
-      # اضافه کردن پرچم‌های دیباگ و محدود کردن فشار به سرور
       - name: Build Debug APK
-        script: ./gradlew assembleDebug --stacktrace --info --max-workers=2
+        script: ./gradlew clean assembleDebug --stacktrace --info --max-workers=2
         
       - name: Send APK to Telegram
         script: |
