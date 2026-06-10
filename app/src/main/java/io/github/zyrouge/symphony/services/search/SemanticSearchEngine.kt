@@ -12,6 +12,7 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import android.net.Uri
+import androidx.lifecycle.viewModelScope
 import io.github.zyrouge.symphony.services.search.ml.ModelManager
 import io.github.zyrouge.symphony.services.search.data.TrackJson
 import kotlinx.serialization.json.Json
@@ -120,7 +121,7 @@ class SemanticSearchEngine(val symphony: Symphony) : Symphony.Hooks {
         return withContext(Dispatchers.Default) {
             try {
                 if (_isReady.value.not() || tokenizer == null || modelRunner == null || repository == null) {
-                    return@withContext emptyList()
+                    return@withContext emptyList<String>()
                 }
 
                 val (inputIds, attentionMask) = tokenizer!!.encode(query)
@@ -132,7 +133,7 @@ class SemanticSearchEngine(val symphony: Symphony) : Symphony.Hooks {
                 results.map { it.track.filePath }
             } catch (e: Exception) {
                 e.printStackTrace()
-                emptyList()
+                emptyList<String>()
             }
         }
     }

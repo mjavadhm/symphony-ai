@@ -261,7 +261,7 @@ fun SettingsView(context: ViewContext, route: SettingsViewRoute) {
                     HorizontalDivider()
                     SettingsSimpleTile(
                         icon = {
-                            Icon(androidx.compose.material.icons.filled.AutoAwesome, null)
+                            Icon(androidx.compose.material.icons.filled.Search, null)
                         },
                         title = {
                             Text("AI Search")
