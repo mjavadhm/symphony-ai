@@ -130,7 +130,7 @@ class SemanticSearchEngine(val symphony: Symphony) : Symphony.Hooks {
                 val results = repository!!.searchHybrid(queryEmbedding, topN = limit)
                 
                 // Return just the filenames or paths. We will map them in the UI.
-                results.map { it.track.filePath }
+                results.mapNotNull { it.track.filePath }
             } catch (e: Exception) {
                 e.printStackTrace()
                 emptyList<String>()

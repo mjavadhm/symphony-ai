@@ -26,6 +26,7 @@ import androidx.compose.material.icons.filled.LibraryMusic
 import androidx.compose.material.icons.filled.MusicNote
 import androidx.compose.material.icons.filled.Palette
 import androidx.compose.material.icons.filled.Radio
+import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Update
 import androidx.compose.material3.CenterAlignedTopAppBar
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -261,7 +262,7 @@ fun SettingsView(context: ViewContext, route: SettingsViewRoute) {
                     HorizontalDivider()
                     SettingsSimpleTile(
                         icon = {
-                            Icon(androidx.compose.material.icons.filled.Search, null)
+                            Icon(Icons.Filled.Search, null)
                         },
                         title = {
                             Text("AI Search")
