@@ -190,7 +190,6 @@ fun SearchView(context: ViewContext, route: SearchViewRoute) {
                 isSearching = false
             }
         }
-    }
 
     val configuration = LocalConfiguration.current
     val density = LocalDensity.current
