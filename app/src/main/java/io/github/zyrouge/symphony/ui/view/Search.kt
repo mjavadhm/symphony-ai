@@ -37,6 +37,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
@@ -93,6 +94,9 @@ fun SearchView(context: ViewContext, route: SearchViewRoute) {
     val initialChip = remember {
         route.initialChip?.let { enumValueOf<Groove.Kind>(it) }
     }
+    var selectedChip by rememberSaveable {
+        mutableStateOf(initialChip)
+    }
     val isSemanticSearchEnabled by context.symphony.settings.isSemanticSearchEnabled.flow.collectAsState()
     val isSemanticSearchReady by context.symphony.semanticSearch.isReady.collectAsState()
     val showAiSearchTab = isSemanticSearchEnabled && isSemanticSearchReady
@@ -120,7 +124,7 @@ fun SearchView(context: ViewContext, route: SearchViewRoute) {
                         
                         // aiResults contains file paths or filenames. We need to map them to song IDs.
                         // Groove.Song has path and filename.
-                        val allSongs = context.symphony.groove.song.getAll()
+                        val allSongs = context.symphony.groove.song.values()
                         for (path in aiResults) {
                             val matchedSong = allSongs.find { 
                                 it.path == path || it.filename == path || it.path.endsWith(path) 
