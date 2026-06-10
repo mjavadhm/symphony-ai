@@ -33,13 +33,14 @@ class Symphony(application: Application) : AndroidViewModel(application), Sympho
     val groove = Groove(this)
     val radio = Radio(this)
     val translator = Translator(this)
+    val semanticSearch = io.github.zyrouge.symphony.services.search.SemanticSearchEngine(this)
 
     var t by mutableStateOf(translator.getCurrentTranslation())
 
     val applicationContext get() = getApplication<Application>().applicationContext
     var closeApp: (() -> Unit)? = null
     private var isReady = false
-    private var hooks = listOf(this, radio, groove)
+    private var hooks = listOf(this, radio, groove, semanticSearch)
 
     internal fun emitReady() {
         if (isReady) {

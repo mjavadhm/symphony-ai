@@ -5,6 +5,7 @@ plugins {
     alias(libs.plugins.kotlin.serialization)
     alias(libs.plugins.ksp)
     alias(libs.plugins.room)
+    id("io.objectbox")
 }
 
 android {
@@ -93,6 +94,10 @@ android {
         }
     }
 
+    androidResources {
+        noCompress += "onnx"
+    }
+
     dependenciesInfo {
         includeInApk = false
         includeInBundle = false
@@ -128,6 +133,8 @@ dependencies {
     ksp(libs.room.compiler)
     implementation(libs.room.ktx)
     implementation(libs.room.runtime)
+    implementation(libs.onnxruntime.android)
+    implementation(libs.documentfile)
 
     debugImplementation(libs.compose.ui.tooling)
     debugImplementation(libs.compose.ui.test.manifest)

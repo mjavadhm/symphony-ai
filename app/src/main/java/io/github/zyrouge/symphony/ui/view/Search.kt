@@ -93,11 +93,12 @@ fun SearchView(context: ViewContext, route: SearchViewRoute) {
     val initialChip = remember {
         route.initialChip?.let { enumValueOf<Groove.Kind>(it) }
     }
-    var selectedChip by rememberSaveable {
-        mutableStateOf(initialChip)
-    }
+    val isSemanticSearchEnabled by context.symphony.settings.isSemanticSearchEnabled.flow.collectAsState()
+    val isSemanticSearchReady by context.symphony.semanticSearch.isReady.collectAsState()
+    val showAiSearchTab = isSemanticSearchEnabled && isSemanticSearchReady
+    var isAiSearchSelected by rememberSaveable { mutableStateOf(false) }
 
-    fun isChipSelected(kind: Groove.Kind) = selectedChip == null || selectedChip == kind
+    fun isChipSelected(kind: Groove.Kind) = (selectedChip == null && !isAiSearchSelected) || selectedChip == kind
 
     var currentTermsRoutine: Job? = null
     fun setTerms(nTerms: String) {
@@ -114,52 +115,67 @@ fun SearchView(context: ViewContext, route: SearchViewRoute) {
                 val genreNames = mutableListOf<String>()
                 val playlistIds = mutableListOf<String>()
 
-                if (nTerms.isNotEmpty()) {
-                    if (isChipSelected(Groove.Kind.SONG)) {
-                        songIds.addAll(
-                            context.symphony.groove.song
-                                .search(context.symphony.groove.song.ids(), terms)
-                                .map { it.entity }
-                        )
-                    }
-                    if (isChipSelected(Groove.Kind.ARTIST)) {
-                        artistNames.addAll(
-                            context.symphony.groove.artist
-                                .search(context.symphony.groove.artist.ids(), terms)
-                                .map { it.entity }
-                        )
-                    }
-                    if (isChipSelected(Groove.Kind.ALBUM)) {
-                        albumIds.addAll(
-                            context.symphony.groove.album
-                                .search(context.symphony.groove.album.ids(), terms)
-                                .map { it.entity }
-                        )
-                    }
-                    if (isChipSelected(Groove.Kind.ALBUM_ARTIST)) {
-                        albumArtistNames.addAll(
-                            context.symphony.groove.albumArtist
-                                .search(context.symphony.groove.albumArtist.ids(), terms)
-                                .map { it.entity }
-                        )
-                    }
-                    if (isChipSelected(Groove.Kind.GENRE)) {
-                        genreNames.addAll(
-                            context.symphony.groove.genre
-                                .search(context.symphony.groove.genre.ids(), terms)
-                                .map { it.entity }
-                        )
-                    }
-                    if (isChipSelected(Groove.Kind.PLAYLIST)) {
-                        playlistIds.addAll(
-                            context.symphony.groove.playlist
-                                .search(context.symphony.groove.playlist.ids(), terms)
-                                .map { it.entity }
-                        )
+                    if (isAiSearchSelected) {
+                        val aiResults = context.symphony.semanticSearch.search(terms)
+                        
+                        // aiResults contains file paths or filenames. We need to map them to song IDs.
+                        // Groove.Song has path and filename.
+                        val allSongs = context.symphony.groove.song.getAll()
+                        for (path in aiResults) {
+                            val matchedSong = allSongs.find { 
+                                it.path == path || it.filename == path || it.path.endsWith(path) 
+                            }
+                            if (matchedSong != null) {
+                                songIds.add(matchedSong.id)
+                            }
+                        }
+                    } else {
+                        if (isChipSelected(Groove.Kind.SONG)) {
+                            songIds.addAll(
+                                context.symphony.groove.song
+                                    .search(context.symphony.groove.song.ids(), terms)
+                                    .map { it.entity }
+                            )
+                        }
+                        if (isChipSelected(Groove.Kind.ARTIST)) {
+                            artistNames.addAll(
+                                context.symphony.groove.artist
+                                    .search(context.symphony.groove.artist.ids(), terms)
+                                    .map { it.entity }
+                            )
+                        }
+                        if (isChipSelected(Groove.Kind.ALBUM)) {
+                            albumIds.addAll(
+                                context.symphony.groove.album
+                                    .search(context.symphony.groove.album.ids(), terms)
+                                    .map { it.entity }
+                            )
+                        }
+                        if (isChipSelected(Groove.Kind.ALBUM_ARTIST)) {
+                            albumArtistNames.addAll(
+                                context.symphony.groove.albumArtist
+                                    .search(context.symphony.groove.albumArtist.ids(), terms)
+                                    .map { it.entity }
+                            )
+                        }
+                        if (isChipSelected(Groove.Kind.GENRE)) {
+                            genreNames.addAll(
+                                context.symphony.groove.genre
+                                    .search(context.symphony.groove.genre.ids(), terms)
+                                    .map { it.entity }
+                            )
+                        }
+                        if (isChipSelected(Groove.Kind.PLAYLIST)) {
+                            playlistIds.addAll(
+                                context.symphony.groove.playlist
+                                    .search(context.symphony.groove.playlist.ids(), terms)
+                                    .map { it.entity }
+                            )
+                        }
                     }
 
                     results = SearchResult(
-                        songIds = songIds,
+                        songIds = songIds.distinct(),
                         artistNames = artistNames,
                         albumIds = albumIds,
                         albumArtistNames = albumArtistNames,
@@ -235,15 +251,29 @@ fun SearchView(context: ViewContext, route: SearchViewRoute) {
                 ) {
                     Spacer(modifier = Modifier.width(4.dp))
                     FilterChip(
-                        selected = selectedChip == null,
+                        selected = selectedChip == null && !isAiSearchSelected,
                         label = {
                             Text(context.symphony.t.All)
                         },
                         onClick = {
                             selectedChip = null
+                            isAiSearchSelected = false
                             setTerms(terms)
                         }
                     )
+                    if (showAiSearchTab) {
+                        FilterChip(
+                            selected = isAiSearchSelected,
+                            label = {
+                                Text("AI Search")
+                            },
+                            onClick = {
+                                selectedChip = null
+                                isAiSearchSelected = true
+                                setTerms(terms)
+                            }
+                        )
+                    }
                     Groove.Kind.entries.map {
                         FilterChip(
                             selected = selectedChip == it,
@@ -274,6 +304,7 @@ fun SearchView(context: ViewContext, route: SearchViewRoute) {
                             },
                             onClick = {
                                 selectedChip = it
+                                isAiSearchSelected = false
                                 setTerms(terms)
                             }
                         )
@@ -285,7 +316,7 @@ fun SearchView(context: ViewContext, route: SearchViewRoute) {
         },
         content = { contentPadding ->
             results?.run {
-                val hasSongs = isChipSelected(Groove.Kind.SONG) && songIds.isNotEmpty()
+                val hasSongs = (isChipSelected(Groove.Kind.SONG) || isAiSearchSelected) && songIds.isNotEmpty()
                 val hasArtists = isChipSelected(Groove.Kind.ARTIST) && artistNames.isNotEmpty()
                 val hasAlbums = isChipSelected(Groove.Kind.ALBUM) && albumIds.isNotEmpty()
                 val hasAlbumArtists =

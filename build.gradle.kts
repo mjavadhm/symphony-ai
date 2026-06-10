@@ -1,3 +1,13 @@
+buildscript {
+    val objectboxVersion = "5.4.1"
+    repositories {
+        mavenCentral()
+    }
+    dependencies {
+        classpath("io.objectbox:objectbox-gradle-plugin:$objectboxVersion")
+    }
+}
+
 plugins {
     alias(libs.plugins.android.app) apply false
     alias(libs.plugins.android.kotlin) apply false

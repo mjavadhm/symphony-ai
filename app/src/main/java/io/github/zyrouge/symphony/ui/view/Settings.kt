@@ -258,6 +258,18 @@ fun SettingsView(context: ViewContext, route: SettingsViewRoute) {
                             context.navController.navigate(UpdateSettingsViewRoute)
                         },
                     )
+                    HorizontalDivider()
+                    SettingsSimpleTile(
+                        icon = {
+                            Icon(androidx.compose.material.icons.filled.AutoAwesome, null)
+                        },
+                        title = {
+                            Text("AI Search")
+                        },
+                        onClick = {
+                            context.navController.navigate(io.github.zyrouge.symphony.ui.view.settings.SemanticSearchSettingsViewRoute)
+                        },
+                    )
                 }
             }
         }
