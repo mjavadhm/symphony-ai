@@ -59,6 +59,7 @@ fun SemanticSearchSettingsView(context: ViewContext) {
                 val res = context.symphony.semanticSearch.importModel(uri, false)
                 if (res.isSuccess) {
                     snackbarHostState.showSnackbar("Text model imported successfully")
+                    context.symphony.semanticSearch.initializeEngine()
                 } else {
                     snackbarHostState.showSnackbar("Failed to import text model")
                 }
@@ -73,6 +74,7 @@ fun SemanticSearchSettingsView(context: ViewContext) {
                 val res = context.symphony.semanticSearch.importModel(uri, true)
                 if (res.isSuccess) {
                     snackbarHostState.showSnackbar("Audio model imported successfully")
+                    context.symphony.semanticSearch.initializeEngine()
                 } else {
                     snackbarHostState.showSnackbar("Failed to import audio model")
                 }
@@ -88,6 +90,7 @@ fun SemanticSearchSettingsView(context: ViewContext) {
                 if (res.isSuccess) {
                     val count = res.getOrNull() ?: 0
                     snackbarHostState.showSnackbar("Successfully imported $count tracks")
+                    context.symphony.semanticSearch.initializeEngine()
                 } else {
                     snackbarHostState.showSnackbar("Failed to import JSON: ${res.exceptionOrNull()?.message}")
                 }
