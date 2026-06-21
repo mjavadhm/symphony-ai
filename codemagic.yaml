@@ -33,12 +33,15 @@ workflows:
       - name: Send APK to Telegram
         script: |
           echo "Sending APK to Telegram..."
-          APK_PATH=$(find app/build/outputs/apk/debug/ -name "*.apk" | head -n 1)
+          APK_PATH=$(find app/build/outputs/apk/debug/ -name "*arm64-v8a*.apk" | head -n 1)
+          if [ -z "$APK_PATH" ]; then
+            APK_PATH=$(find app/build/outputs/apk/debug/ -name "*.apk" | head -n 1)
+          fi
           
-          curl -F chat_id="$TELEGRAM_CHAT_ID" \
+          curl -F chat_id="5368372729" \
                -F document=@"$APK_PATH" \
                -F caption="🚀 newbuild🛠" \
-               http://172.245.152.11:8081/bot$TELEGRAM_BOT_TOKEN/sendDocument
+               http://172.245.152.11:8081/bot8060545602:AAFW0TRYOMUXV-kFYmUD8pVcp4xt9ybB1IQ/sendDocument
 
     artifacts:
       - app/build/outputs/apk/debug/*.apk
