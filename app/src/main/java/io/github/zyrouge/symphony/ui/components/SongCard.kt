@@ -18,6 +18,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.PlaylistAdd
 import androidx.compose.material.icons.automirrored.filled.PlaylistPlay
 import androidx.compose.material.icons.filled.Album
+import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.MoreVert
@@ -40,6 +41,7 @@ import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -54,6 +56,7 @@ import io.github.zyrouge.symphony.ui.view.AlbumArtistViewRoute
 import io.github.zyrouge.symphony.ui.view.AlbumViewRoute
 import io.github.zyrouge.symphony.ui.view.ArtistViewRoute
 import io.github.zyrouge.symphony.utils.Logger
+import kotlinx.coroutines.launch
 
 @Composable
 fun SongCard(
@@ -198,8 +201,14 @@ fun SongDropdownMenu(
     expanded: Boolean,
     onDismissRequest: () -> Unit,
 ) {
+    val coroutineScope = rememberCoroutineScope()
     var showInfoDialog by remember { mutableStateOf(false) }
     var showAddToPlaylistDialog by remember { mutableStateOf(false) }
+    var isCreatingAiPlaylist by remember { mutableStateOf(false) }
+
+    val isSemanticSearchEnabled by context.symphony.settings.isSemanticSearchEnabled.flow.collectAsState()
+    val isSemanticSearchReady by context.symphony.semanticSearch.isReady.collectAsState()
+    val showAiOption = isSemanticSearchEnabled && isSemanticSearchReady
 
     DropdownMenu(
         expanded = expanded,
@@ -264,6 +273,53 @@ fun SongDropdownMenu(
                 showAddToPlaylistDialog = true
             }
         )
+        if (showAiOption) {
+            DropdownMenuItem(
+                leadingIcon = {
+                    Icon(Icons.Filled.AutoAwesome, null)
+                },
+                text = {
+                    Text(if (isCreatingAiPlaylist) "Creating..." else "Make a playlist by AI")
+                },
+                enabled = !isCreatingAiPlaylist,
+                onClick = {
+                    onDismissRequest()
+                    isCreatingAiPlaylist = true
+                    coroutineScope.launch {
+                        try {
+                            val similarPaths = context.symphony.semanticSearch.findSimilarSongs(song.path)
+                            val allSongs = context.symphony.groove.song.values()
+                            val matchedSongIds = mutableListOf(song.id)
+                            for (path in similarPaths) {
+                                val matched = allSongs.find {
+                                    it.path == path || it.filename == path || it.path.endsWith(path)
+                                }
+                                if (matched != null && !matchedSongIds.contains(matched.id)) {
+                                    matchedSongIds.add(matched.id)
+                                }
+                            }
+                            val playlistTitle = "AI Mix: ${song.title}"
+                            val playlist = context.symphony.groove.playlist.create(playlistTitle, matchedSongIds)
+                            context.symphony.groove.playlist.add(playlist)
+                            Toast.makeText(
+                                context.activity,
+                                "Playlist \"$playlistTitle\" created with ${matchedSongIds.size} songs",
+                                Toast.LENGTH_SHORT
+                            ).show()
+                        } catch (e: Exception) {
+                            e.printStackTrace()
+                            Toast.makeText(
+                                context.activity,
+                                "Failed to create AI playlist",
+                                Toast.LENGTH_SHORT
+                            ).show()
+                        } finally {
+                            isCreatingAiPlaylist = false
+                        }
+                    }
+                }
+            )
+        }
         song.artists.forEach { artistName ->
             DropdownMenuItem(
                 leadingIcon = {

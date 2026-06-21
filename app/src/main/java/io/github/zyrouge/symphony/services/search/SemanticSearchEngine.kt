@@ -137,4 +137,26 @@ class SemanticSearchEngine(val symphony: Symphony) : Symphony.Hooks {
             }
         }
     }
+
+    /**
+     * Find songs similar to the given song by comparing audio embeddings.
+     * @param songPath The file path of the source song.
+     * @param limit Maximum number of similar songs to return.
+     * @return List of file paths of similar songs.
+     */
+    suspend fun findSimilarSongs(songPath: String, limit: Int = 20): List<String> {
+        return withContext(Dispatchers.Default) {
+            try {
+                if (_isReady.value.not() || repository == null) {
+                    return@withContext emptyList<String>()
+                }
+
+                val results = repository!!.searchSimilarByFilePath(songPath, topN = limit)
+                results.mapNotNull { it.track.filePath }
+            } catch (e: Exception) {
+                e.printStackTrace()
+                emptyList<String>()
+            }
+        }
+    }
 }

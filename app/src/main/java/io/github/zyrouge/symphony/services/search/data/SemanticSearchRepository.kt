@@ -86,6 +86,26 @@ class SemanticSearchRepository(boxStore: BoxStore) {
         // 4. Sort and return top N
         return results.sortedByDescending { it.hybridScore }.take(topN)
     }
+
+    /**
+     * Find tracks similar to a given track by its file path.
+     * Uses the track's mean embedding to search for similar tracks.
+     */
+    fun searchSimilarByFilePath(filePath: String, topN: Int = 20): List<SearchResult> {
+        val allTracks = trackBox.all
+        val sourceTrack = allTracks.find { it.filePath == filePath } ?: return emptyList()
+        val sourceEmbedding = sourceTrack.meanEmbedding ?: return emptyList()
+
+        val results = mutableListOf<SearchResult>()
+        for (track in allTracks) {
+            if (track.id == sourceTrack.id) continue
+            val meanEmb = track.meanEmbedding ?: continue
+            val score = cosineSimilarity(sourceEmbedding, meanEmb)
+            results.add(SearchResult(track, score, score, score))
+        }
+
+        return results.sortedByDescending { it.hybridScore }.take(topN)
+    }
     
     fun getAllTracksCount(): Long {
         return trackBox.count()
