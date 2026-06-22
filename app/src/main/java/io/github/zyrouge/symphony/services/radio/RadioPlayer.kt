@@ -221,8 +221,12 @@ class RadioPlayer(val symphony: Symphony, val id: String, val uri: Uri) {
         onError = listener
     }
 
+    var activelyPlayedMs: Long = 0
+        private set
+
     private fun createDurationTimer() {
         playbackPositionUpdater = kotlin.concurrent.timer(period = 100L) {
+            activelyPlayedMs += 100
             emitPlaybackPosition()
         }
     }

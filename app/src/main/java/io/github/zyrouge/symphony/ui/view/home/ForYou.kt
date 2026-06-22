@@ -78,6 +78,9 @@ fun ForYouView(context: ViewContext) {
     val songIds by context.symphony.groove.song.all.collectAsState()
     val sortBy by context.symphony.settings.lastUsedSongsSortBy.flow.collectAsState()
     val sortReverse by context.symphony.settings.lastUsedSongsSortReverse.flow.collectAsState()
+    
+    val mostPlayedSongs by context.symphony.database.playbackHistory.getMostPlayedSongs(10).collectAsState(initial = emptyList())
+    val recentlyPlayedSongs by context.symphony.database.playbackHistory.getRecentlyPlayedSongs(10).collectAsState(initial = emptyList())
 
     when {
         songIds.isNotEmpty() -> {
@@ -153,6 +156,49 @@ fun ForYouView(context: ViewContext) {
                     }
                 }
                 Spacer(modifier = Modifier.height(20.dp))
+                if (mostPlayedSongs.isNotEmpty()) {
+                    SideHeading {
+                        Text("Most Played")
+                    }
+                    Spacer(modifier = Modifier.height(12.dp))
+                    BoxWithConstraints {
+                        val tileWidth = this@BoxWithConstraints.maxWidth.times(0.7f)
+                        Row(
+                            modifier = Modifier.horizontalScroll(rememberScrollState()),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        ) {
+                            Spacer(modifier = Modifier.width(12.dp))
+                            mostPlayedSongs.forEachIndexed { i, songId ->
+                                val song = context.symphony.groove.song.get(songId) ?: return@forEachIndexed
+                                ForYouSongCard(context, song, tileWidth, mostPlayedSongs, i)
+                            }
+                            Spacer(modifier = Modifier.width(12.dp))
+                        }
+                    }
+                    Spacer(modifier = Modifier.height(20.dp))
+                }
+                if (recentlyPlayedSongs.isNotEmpty()) {
+                    SideHeading {
+                        Text("Recently Played")
+                    }
+                    Spacer(modifier = Modifier.height(12.dp))
+                    BoxWithConstraints {
+                        val tileWidth = this@BoxWithConstraints.maxWidth.times(0.7f)
+                        Row(
+                            modifier = Modifier.horizontalScroll(rememberScrollState()),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        ) {
+                            Spacer(modifier = Modifier.width(12.dp))
+                            recentlyPlayedSongs.forEachIndexed { i, songId ->
+                                val song = context.symphony.groove.song.get(songId) ?: return@forEachIndexed
+                                ForYouSongCard(context, song, tileWidth, recentlyPlayedSongs, i)
+                            }
+                            Spacer(modifier = Modifier.width(12.dp))
+                        }
+                    }
+                    Spacer(modifier = Modifier.height(20.dp))
+                }
+
                 SideHeading {
                     Text(context.symphony.t.RecentlyAddedSongs)
                 }

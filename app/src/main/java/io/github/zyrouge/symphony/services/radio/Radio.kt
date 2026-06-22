@@ -321,11 +321,28 @@ class Radio(private val symphony: Symphony) : Symphony.Hooks {
     }
 
     private fun stopCurrentSong() {
-        player?.let {
+        player?.let { p ->
             player = null
-            it.setOnPlaybackPositionListener {}
-            it.changeVolume(RadioPlayer.MIN_VOLUME) { _ ->
-                it.stop()
+            p.setOnPlaybackPositionListener {}
+            
+            // Log playback history if played for at least 30 seconds
+            if (p.activelyPlayedMs >= 30_000) {
+                symphony.groove.coroutineScope.launch {
+                    try {
+                        val history = io.github.zyrouge.symphony.services.database.entities.PlaybackHistory(
+                            songId = p.id,
+                            playedAt = System.currentTimeMillis(),
+                            durationPlayed = p.activelyPlayedMs
+                        )
+                        symphony.database.playbackHistory.insert(history)
+                    } catch (e: Exception) {
+                        Logger.error("Radio", "Failed to log playback history", e)
+                    }
+                }
+            }
+            
+            p.changeVolume(RadioPlayer.MIN_VOLUME) { _ ->
+                p.stop()
                 onUpdate.dispatch(Events.Player.Stopped)
             }
         }

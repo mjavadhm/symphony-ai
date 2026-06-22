@@ -6,13 +6,16 @@ import androidx.room.RoomDatabase
 import androidx.room.TypeConverters
 import io.github.zyrouge.symphony.Symphony
 import io.github.zyrouge.symphony.services.database.store.PlaylistStore
+import io.github.zyrouge.symphony.services.database.entities.PlaybackHistory
+import io.github.zyrouge.symphony.services.database.store.PlaybackHistoryStore
 import io.github.zyrouge.symphony.services.groove.Playlist
 import io.github.zyrouge.symphony.utils.RoomConvertors
 
-@Database(entities = [Playlist::class], version = 1)
+@Database(entities = [Playlist::class, PlaybackHistory::class], version = 2)
 @TypeConverters(RoomConvertors::class)
 abstract class PersistentDatabase : RoomDatabase() {
     abstract fun playlists(): PlaylistStore
+    abstract fun playbackHistory(): PlaybackHistoryStore
 
     companion object {
         fun create(symphony: Symphony) = Room
@@ -21,6 +24,7 @@ abstract class PersistentDatabase : RoomDatabase() {
                 PersistentDatabase::class.java,
                 "persistent"
             )
+            .fallbackToDestructiveMigration()
             .build()
     }
 }
