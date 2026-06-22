@@ -18,4 +18,7 @@ interface PlaybackHistoryStore {
     
     @Query("SELECT COUNT(*) FROM playback_history WHERE songId = :songId")
     suspend fun getPlayCount(songId: String): Int
+
+    @Query("SELECT * FROM playback_history ORDER BY playedAt DESC")
+    suspend fun getAllHistory(): List<PlaybackHistory>
 }

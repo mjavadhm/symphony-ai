@@ -16,6 +16,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.FilterAlt
 import androidx.compose.material.icons.filled.FindInPage
+import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.Image
 import androidx.compose.material.icons.filled.LibraryMusic
 import androidx.compose.material.icons.filled.RuleFolder
@@ -312,6 +313,43 @@ fun GrooveSettingsView(context: ViewContext, route: GrooveSettingsViewRoute) {
                                     context.symphony.t.SongCacheCleared,
                                     withDismissAction = true,
                                 )
+                            }
+                        }
+                    )
+                    HorizontalDivider()
+                    SettingsSimpleTile(
+                        icon = {
+                            Icon(Icons.Filled.Download, null)
+                        },
+                        title = {
+                            Text("Export Playback History")
+                        },
+                        onClick = {
+                            coroutineScope.launch {
+                                try {
+                                    val history = context.symphony.database.playbackHistoryStore().getAllHistory()
+                                    val csv = StringBuilder()
+                                    csv.append("Song ID,Title,Artist,Played At (Unix Ms)\n")
+                                    for (record in history) {
+                                        val song = context.symphony.groove.song.get(record.songId)
+                                        val title = song?.title?.replace(",", "") ?: "Unknown"
+                                        val artist = song?.artists?.joinToString(";")?.replace(",", "") ?: "Unknown"
+                                        csv.append("${record.songId},$title,$artist,${record.playedAt}\n")
+                                    }
+                                    
+                                    val file = java.io.File(android.os.Environment.getExternalStoragePublicDirectory(android.os.Environment.DIRECTORY_DOWNLOADS), "symphony_playback_history.csv")
+                                    file.writeText(csv.toString())
+                                    
+                                    snackbarHostState.showSnackbar(
+                                        "Exported to Downloads/symphony_playback_history.csv",
+                                        withDismissAction = true,
+                                    )
+                                } catch (e: Exception) {
+                                    snackbarHostState.showSnackbar(
+                                        "Export failed: ${e.message}",
+                                        withDismissAction = true,
+                                    )
+                                }
                             }
                         }
                     )
