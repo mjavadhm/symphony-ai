@@ -91,6 +91,7 @@ import io.github.zyrouge.symphony.ui.view.home.GenresView
 import io.github.zyrouge.symphony.ui.view.home.PlaylistsView
 import io.github.zyrouge.symphony.ui.view.home.SongsView
 import io.github.zyrouge.symphony.ui.view.home.TreeView
+import io.github.zyrouge.symphony.ui.view.home.DiscoverView
 import kotlinx.serialization.Serializable
 
 enum class HomePage(
@@ -103,6 +104,11 @@ enum class HomePage(
         label = { it.symphony.t.ForYou },
         selectedIcon = { Icons.Filled.Face },
         unselectedIcon = { Icons.Outlined.Face }
+    ),
+    Discover(
+        label = { "Discover" }, // We'll add translations later, hardcode for now
+        selectedIcon = { Icons.Filled.AutoAwesome },
+        unselectedIcon = { Icons.Outlined.AutoAwesome }
     ),
     Songs(
         kind = Groove.Kind.SONG,
@@ -271,6 +277,7 @@ fun HomeView(context: ViewContext) {
             ) { page ->
                 when (page) {
                     HomePage.ForYou -> ForYouView(context)
+                    HomePage.Discover -> DiscoverView(context)
                     HomePage.Songs -> SongsView(context)
                     HomePage.Albums -> AlbumsView(context)
                     HomePage.Artists -> ArtistsView(context)
