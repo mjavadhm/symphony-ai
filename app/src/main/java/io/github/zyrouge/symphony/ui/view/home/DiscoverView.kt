@@ -219,8 +219,7 @@ fun DiscoverView(context: ViewContext) {
                             }
                             TextButton(onClick = {
                                 context.symphony.radio.shorty.playQueue(
-                                    songs.map { it.id },
-                                    playWhenReady = true
+                                    songs.map { it.id }
                                 )
                             }) {
                                 Text("Play Now")
