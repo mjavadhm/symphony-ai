@@ -83,7 +83,10 @@ class SemanticSearchEngine(val symphony: Symphony) : Symphony.Hooks {
         }
     }
 
-    suspend fun importJsonDatabase(jsonUri: Uri): Result<Int> {
+    suspend fun importJsonDatabase(
+        jsonUri: Uri,
+        onProgress: suspend (Int, String) -> Unit = { _, _ -> }
+    ): Result<Int> {
         return withContext(Dispatchers.IO) {
             try {
                 if (repository == null) {
@@ -106,10 +109,18 @@ class SemanticSearchEngine(val symphony: Symphony) : Symphony.Hooks {
                         
                         while (reader.hasNext()) {
                             when (reader.nextName()) {
-                                "filename" -> filename = reader.nextString()
-                                "title" -> title = reader.nextString()
-                                "artist" -> artist = reader.nextString()
-                                "duration" -> duration = reader.nextInt()
+                                "filename" -> {
+                                    filename = if (reader.peek() == android.util.JsonToken.NULL) { reader.nextNull(); "" } else reader.nextString()
+                                }
+                                "title" -> {
+                                    title = if (reader.peek() == android.util.JsonToken.NULL) { reader.nextNull(); "" } else reader.nextString()
+                                }
+                                "artist" -> {
+                                    artist = if (reader.peek() == android.util.JsonToken.NULL) { reader.nextNull(); "" } else reader.nextString()
+                                }
+                                "duration" -> {
+                                    duration = if (reader.peek() == android.util.JsonToken.NULL) { reader.nextNull(); 0 } else reader.nextInt()
+                                }
                                 "chunks" -> {
                                     reader.beginArray()
                                     while (reader.hasNext()) {
@@ -136,6 +147,10 @@ class SemanticSearchEngine(val symphony: Symphony) : Symphony.Hooks {
                             chunkEmbeddings = chunks
                         )
                         saved++
+                        
+                        if (saved % 5 == 0) {
+                            onProgress(saved, "Importing: $title")
+                        }
                     }
                     reader.endArray()
                 }

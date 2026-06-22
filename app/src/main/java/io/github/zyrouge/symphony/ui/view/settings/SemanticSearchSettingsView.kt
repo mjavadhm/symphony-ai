@@ -82,11 +82,24 @@ fun SemanticSearchSettingsView(context: ViewContext) {
         }
     }
 
+    var isImporting by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf(false) }
+    var importProgressText by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf("") }
+    var importProgressCount by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf(0) }
+
     val jsonLauncher = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
         if (uri != null) {
             coroutineScope.launch {
-                snackbarHostState.showSnackbar("Importing JSON database...")
-                val res = context.symphony.semanticSearch.importJsonDatabase(uri)
+                isImporting = true
+                importProgressCount = 0
+                importProgressText = "Starting import..."
+                
+                val res = context.symphony.semanticSearch.importJsonDatabase(uri) { count, text ->
+                    importProgressCount = count
+                    importProgressText = text
+                }
+                
+                isImporting = false
+                
                 if (res.isSuccess) {
                     val count = res.getOrNull() ?: 0
                     snackbarHostState.showSnackbar("Successfully imported $count tracks")
@@ -96,6 +109,26 @@ fun SemanticSearchSettingsView(context: ViewContext) {
                 }
             }
         }
+    }
+    
+    if (isImporting) {
+        androidx.compose.material3.AlertDialog(
+            onDismissRequest = { },
+            confirmButton = { },
+            title = { Text("Importing Database") },
+            text = {
+                Column {
+                    androidx.compose.material3.CircularProgressIndicator()
+                    androidx.compose.foundation.layout.Spacer(Modifier.padding(16.dp))
+                    Text("Imported: $importProgressCount tracks")
+                    Text(
+                        importProgressText,
+                        maxLines = 1,
+                        overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
+                    )
+                }
+            }
+        )
     }
 
     Scaffold(
