@@ -37,6 +37,7 @@ fun DiscoverView(context: ViewContext) {
     var isGenerating by remember { mutableStateOf(false) }
     var generatedSongs by remember { mutableStateOf<List<Song>?>(null) }
     val selectedGeneratedSongs = remember { mutableStateListOf<String>() }
+    var showAddToPlaylistDialog by remember { mutableStateOf(false) }
     
     // For song search mode
     var songSearchQuery by remember { mutableStateOf("") }
@@ -65,13 +66,15 @@ fun DiscoverView(context: ViewContext) {
             )
         }
     ) { contentPadding ->
-        Column(
+        LazyColumn(
             modifier = Modifier
                 .padding(contentPadding)
                 .fillMaxSize()
                 .padding(horizontal = 16.dp)
         ) {
-            // Mode Switcher
+            item {
+                Column(modifier = Modifier.fillMaxWidth()) {
+                    // Mode Switcher
             TabRow(selectedTabIndex = searchMode) {
                 Tab(
                     selected = searchMode == 0,
@@ -233,36 +236,33 @@ fun DiscoverView(context: ViewContext) {
                 }
             }
 
-            Spacer(modifier = Modifier.height(16.dp))
-
-            var showAddToPlaylistDialog by remember { mutableStateOf(false) }
-            
             // Results
             generatedSongs?.let { songs ->
                 if (songs.isNotEmpty()) {
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Text("${selectedGeneratedSongs.size} selected", style = MaterialTheme.typography.titleMedium)
-                        Row {
-                            TextButton(onClick = {
-                                showAddToPlaylistDialog = true
-                            }, enabled = selectedGeneratedSongs.isNotEmpty()) {
-                                Text("Save")
-                            }
-                            TextButton(onClick = {
-                                context.symphony.radio.shorty.playQueue(
-                                    selectedGeneratedSongs.toList()
-                                )
-                            }, enabled = selectedGeneratedSongs.isNotEmpty()) {
-                                Text("Play")
+                    item {
+                        Row(
+                            modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text("${selectedGeneratedSongs.size} selected", style = MaterialTheme.typography.titleMedium)
+                            Row {
+                                TextButton(onClick = {
+                                    showAddToPlaylistDialog = true
+                                }, enabled = selectedGeneratedSongs.isNotEmpty()) {
+                                    Text("Save")
+                                }
+                                TextButton(onClick = {
+                                    context.symphony.radio.shorty.playQueue(
+                                        selectedGeneratedSongs.toList()
+                                    )
+                                }, enabled = selectedGeneratedSongs.isNotEmpty()) {
+                                    Text("Play")
+                                }
                             }
                         }
                     }
-                    LazyColumn(modifier = Modifier.weight(1f)) {
-                        itemsIndexed(songs) { index, song ->
+                    itemsIndexed(songs) { index, song ->
                             val isSelected = selectedGeneratedSongs.contains(song.id)
                             SongCard(
                                 context = context,
@@ -283,20 +283,22 @@ fun DiscoverView(context: ViewContext) {
                             )
                         }
                     }
-                    
-                    if (showAddToPlaylistDialog) {
-                        AddToPlaylistDialog(
-                            context = context,
-                            songIds = selectedGeneratedSongs.toList(),
-                            onDismissRequest = {
-                                showAddToPlaylistDialog = false
-                            }
-                        )
-                    }
                 } else {
-                    Text("No songs found. Try adjusting your parameters.", color = MaterialTheme.colorScheme.error)
+                    item {
+                        Text("No songs found. Try adjusting your parameters.", color = MaterialTheme.colorScheme.error, modifier = Modifier.padding(vertical = 16.dp))
+                    }
                 }
             }
+        }
+        
+        if (showAddToPlaylistDialog) {
+            AddToPlaylistDialog(
+                context = context,
+                songIds = selectedGeneratedSongs.toList(),
+                onDismissRequest = {
+                    showAddToPlaylistDialog = false
+                }
+            )
         }
     }
 }
