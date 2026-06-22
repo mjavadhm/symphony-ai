@@ -327,7 +327,7 @@ fun GrooveSettingsView(context: ViewContext, route: GrooveSettingsViewRoute) {
                         onClick = {
                             coroutineScope.launch {
                                 try {
-                                    val history = context.symphony.database.playbackHistoryStore().getAllHistory()
+                                    val history = context.symphony.database.playbackHistory.getAllHistory()
                                     val csv = StringBuilder()
                                     csv.append("Song ID,Title,Artist,Played At (Unix Ms)\n")
                                     for (record in history) {
