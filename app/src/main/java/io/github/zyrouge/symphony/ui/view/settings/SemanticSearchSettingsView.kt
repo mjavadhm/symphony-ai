@@ -229,6 +229,22 @@ fun SemanticSearchSettingsView(context: ViewContext) {
                                 jsonLauncher.launch(arrayOf("application/json", "*/*"))
                             }
                         )
+
+                        val isSemanticSearchReady by context.symphony.semanticSearch.isReady.collectAsState()
+                        if (isSemanticSearchReady) {
+                            HorizontalDivider()
+                            SettingsSimpleTile(
+                                icon = {
+                                    Icon(Icons.Filled.AutoAwesome, null)
+                                },
+                                title = {
+                                    Text("Manage AI Index")
+                                },
+                                onClick = {
+                                    context.navController.navigate(io.github.zyrouge.symphony.ui.view.settings.IndexSongsSettingsRoute)
+                                }
+                            )
+                        }
                     }
                 }
             }

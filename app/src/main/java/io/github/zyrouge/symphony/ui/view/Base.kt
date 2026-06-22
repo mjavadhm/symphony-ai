@@ -112,6 +112,9 @@ fun BaseView(symphony: Symphony, activity: MainActivity) {
                 baseComposable<SemanticSearchSettingsViewRoute> {
                     SemanticSearchSettingsView(context)
                 }
+                baseComposable<io.github.zyrouge.symphony.ui.view.settings.IndexSongsSettingsRoute> {
+                    io.github.zyrouge.symphony.ui.view.settings.IndexSongsSettingsView(context)
+                }
                 baseComposable<io.github.zyrouge.symphony.ui.view.settings.DuplicateSongsSettingsViewRoute> {
                     io.github.zyrouge.symphony.ui.view.settings.DuplicateSongsSettingsView(context)
                 }

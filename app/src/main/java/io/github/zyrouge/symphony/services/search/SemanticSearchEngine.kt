@@ -164,6 +164,45 @@ class SemanticSearchEngine(val symphony: Symphony) : Symphony.Hooks {
         }
     }
 
+    suspend fun embedSongLocal(song: io.github.zyrouge.symphony.services.groove.Song): Result<Unit> {
+        return withContext(Dispatchers.Default) {
+            try {
+                if (_isReady.value.not() || modelRunner == null || repository == null) {
+                    return@withContext Result.failure(Exception("AI engine is not ready."))
+                }
+
+                val decoder = io.github.zyrouge.symphony.services.search.ml.AudioDecoder(symphony.applicationContext)
+                val melExtractor = io.github.zyrouge.symphony.services.search.ml.MelSpectrogramExtractor()
+
+                val chunks = decoder.extractChunks(song.uri)
+                if (chunks.isEmpty()) {
+                    return@withContext Result.failure(Exception("Could not extract audio chunks from the song."))
+                }
+
+                val chunkEmbeddings = mutableListOf<FloatArray>()
+                for (chunk in chunks) {
+                    val melSpec = melExtractor.extract(chunk.floatArray)
+                    val embedding = modelRunner!!.getAudioEmbedding(melSpec)
+                    chunkEmbeddings.add(embedding)
+                }
+
+                repository!!.insertTrack(
+                    filePath = song.path, // We use the path for matching later
+                    title = song.title,
+                    artist = song.artists.joinToString(),
+                    durationSeconds = song.duration,
+                    chunkEmbeddings = chunkEmbeddings
+                )
+
+                repository!!.invalidateCache()
+                Result.success(Unit)
+            } catch (e: Exception) {
+                e.printStackTrace()
+                Result.failure(e)
+            }
+        }
+    }
+
     suspend fun search(query: String, limit: Int = 10): List<String> {
         return withContext(Dispatchers.Default) {
             try {

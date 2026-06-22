@@ -203,6 +203,7 @@ fun SongCard(
                             context,
                             song,
                             isFavorite = isFavorite,
+                            isEmbedded = isEmbedded,
                             trailingContent = trailingOptionsContent,
                             expanded = showOptionsMenu,
                             onDismissRequest = {
@@ -221,6 +222,7 @@ fun SongDropdownMenu(
     context: ViewContext,
     song: Song,
     isFavorite: Boolean,
+    isEmbedded: Boolean = false,
     trailingContent: (@Composable ColumnScope.(() -> Unit) -> Unit)? = null,
     expanded: Boolean,
     onDismissRequest: () -> Unit,
@@ -298,6 +300,35 @@ fun SongDropdownMenu(
             }
         )
         if (showAiOption) {
+            if (!isEmbedded) {
+                var isEmbedding by remember { mutableStateOf(false) }
+                DropdownMenuItem(
+                    leadingIcon = {
+                        Icon(Icons.Filled.AutoAwesome, null)
+                    },
+                    text = {
+                        Text(if (isEmbedding) "Indexing..." else "Index with AI")
+                    },
+                    enabled = !isEmbedding,
+                    onClick = {
+                        isEmbedding = true
+                        coroutineScope.launch {
+                            try {
+                                Toast.makeText(context.activity, "Embedding ${song.title}...", Toast.LENGTH_SHORT).show()
+                                val result = context.symphony.semanticSearch.embedSongLocal(song)
+                                if (result.isSuccess) {
+                                    Toast.makeText(context.activity, "Embedded successfully!", Toast.LENGTH_SHORT).show()
+                                } else {
+                                    Toast.makeText(context.activity, "Failed: ${result.exceptionOrNull()?.message}", Toast.LENGTH_LONG).show()
+                                }
+                            } finally {
+                                isEmbedding = false
+                                onDismissRequest()
+                            }
+                        }
+                    }
+                )
+            }
             DropdownMenuItem(
                 leadingIcon = {
                     Icon(Icons.Filled.AutoAwesome, null)
