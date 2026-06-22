@@ -24,6 +24,7 @@ import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
+import androidx.compose.ui.unit.dp
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
@@ -82,23 +83,23 @@ fun SemanticSearchSettingsView(context: ViewContext) {
         }
     }
 
-    var isImporting by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf(false) }
-    var importProgressText by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf("") }
-    var importProgressCount by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf(0) }
+    val isImportingState = androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf(false) }
+    val importProgressTextState = androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf("") }
+    val importProgressCountState = androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf(0) }
 
     val jsonLauncher = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
         if (uri != null) {
             coroutineScope.launch {
-                isImporting = true
-                importProgressCount = 0
-                importProgressText = "Starting import..."
+                isImportingState.value = true
+                importProgressCountState.value = 0
+                importProgressTextState.value = "Starting import..."
                 
                 val res = context.symphony.semanticSearch.importJsonDatabase(uri) { count, text ->
-                    importProgressCount = count
-                    importProgressText = text
+                    importProgressCountState.value = count
+                    importProgressTextState.value = text
                 }
                 
-                isImporting = false
+                isImportingState.value = false
                 
                 if (res.isSuccess) {
                     val count = res.getOrNull() ?: 0
@@ -111,7 +112,7 @@ fun SemanticSearchSettingsView(context: ViewContext) {
         }
     }
     
-    if (isImporting) {
+    if (isImportingState.value) {
         androidx.compose.material3.AlertDialog(
             onDismissRequest = { },
             confirmButton = { },
@@ -120,9 +121,9 @@ fun SemanticSearchSettingsView(context: ViewContext) {
                 Column {
                     androidx.compose.material3.CircularProgressIndicator()
                     androidx.compose.foundation.layout.Spacer(Modifier.padding(16.dp))
-                    Text("Imported: $importProgressCount tracks")
+                    Text("Imported: ${importProgressCountState.value} tracks")
                     Text(
-                        importProgressText,
+                        importProgressTextState.value,
                         maxLines = 1,
                         overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
                     )
