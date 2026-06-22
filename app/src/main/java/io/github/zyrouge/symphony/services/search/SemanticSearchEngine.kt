@@ -93,23 +93,53 @@ class SemanticSearchEngine(val symphony: Symphony) : Symphony.Hooks {
                 val inputStream = symphony.applicationContext.contentResolver.openInputStream(jsonUri)
                     ?: return@withContext Result.failure(Exception("Failed to open file."))
                 
-                val jsonString = inputStream.bufferedReader().use { it.readText() }
-                
-                val jsonFormat = Json { ignoreUnknownKeys = true }
-                val tracks = jsonFormat.decodeFromString<List<TrackJson>>(jsonString)
-                
                 var saved = 0
-                for (track in tracks) {
-                    val floatArrayChunks = track.chunks.map { it.toFloatArray() }
-                    repository?.insertTrack(
-                        filePath = track.filename,
-                        title = track.title,
-                        artist = track.artist,
-                        durationSeconds = track.duration,
-                        chunkEmbeddings = floatArrayChunks
-                    )
-                    saved++
+                android.util.JsonReader(java.io.InputStreamReader(inputStream, "UTF-8")).use { reader ->
+                    reader.beginArray()
+                    while (reader.hasNext()) {
+                        reader.beginObject()
+                        var filename = ""
+                        var title = ""
+                        var artist = ""
+                        var duration = 0
+                        val chunks = mutableListOf<FloatArray>()
+                        
+                        while (reader.hasNext()) {
+                            when (reader.nextName()) {
+                                "filename" -> filename = reader.nextString()
+                                "title" -> title = reader.nextString()
+                                "artist" -> artist = reader.nextString()
+                                "duration" -> duration = reader.nextInt()
+                                "chunks" -> {
+                                    reader.beginArray()
+                                    while (reader.hasNext()) {
+                                        val chunk = mutableListOf<Float>()
+                                        reader.beginArray()
+                                        while (reader.hasNext()) {
+                                            chunk.add(reader.nextDouble().toFloat())
+                                        }
+                                        reader.endArray()
+                                        chunks.add(chunk.toFloatArray())
+                                    }
+                                    reader.endArray()
+                                }
+                                else -> reader.skipValue()
+                            }
+                        }
+                        reader.endObject()
+                        
+                        repository?.insertTrack(
+                            filePath = filename,
+                            title = title,
+                            artist = artist,
+                            durationSeconds = duration,
+                            chunkEmbeddings = chunks
+                        )
+                        saved++
+                    }
+                    reader.endArray()
                 }
+                
                 repository?.invalidateCache()
                 Result.success(saved)
             } catch (e: Exception) {
