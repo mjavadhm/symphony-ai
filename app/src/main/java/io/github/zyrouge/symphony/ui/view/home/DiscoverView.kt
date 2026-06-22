@@ -13,6 +13,7 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.unit.dp
@@ -31,9 +32,11 @@ fun DiscoverView(context: ViewContext) {
     
     var trackCount by remember { mutableStateOf(20f) }
     var similarityThreshold by remember { mutableStateOf(50f) }
+    var limitMode by remember { mutableStateOf(0) } // 0 = Count, 1 = Similarity
     
     var isGenerating by remember { mutableStateOf(false) }
     var generatedSongs by remember { mutableStateOf<List<Song>?>(null) }
+    val selectedGeneratedSongs = remember { mutableStateListOf<String>() }
     
     // For song search mode
     var songSearchQuery by remember { mutableStateOf("") }
@@ -108,8 +111,15 @@ fun DiscoverView(context: ViewContext) {
                             Column {
                                 filteredSongs.forEach { song ->
                                     ListItem(
-                                        headlineContent = { Text(song.title) },
-                                        supportingContent = { Text(song.artists.joinToString()) },
+                                        leadingContent = {
+                                            coil.compose.AsyncImage(
+                                                model = song.createArtworkImageRequest(context.symphony).build(),
+                                                contentDescription = null,
+                                                modifier = Modifier.size(48.dp).clip(MaterialTheme.shapes.small)
+                                            )
+                                        },
+                                        headlineContent = { Text(song.title, maxLines = 1) },
+                                        supportingContent = { Text(song.artists.joinToString(), maxLines = 1) },
                                         modifier = Modifier.clickable {
                                             selectedReferenceSong = song
                                             songSearchQuery = ""
@@ -122,8 +132,14 @@ fun DiscoverView(context: ViewContext) {
                 } else {
                     Card(modifier = Modifier.fillMaxWidth()) {
                         ListItem(
-                            leadingContent = { Icon(Icons.Filled.MusicNote, null) },
-                            headlineContent = { Text(selectedReferenceSong!!.title) },
+                            leadingContent = {
+                                coil.compose.AsyncImage(
+                                    model = selectedReferenceSong!!.createArtworkImageRequest(context.symphony).build(),
+                                    contentDescription = null,
+                                    modifier = Modifier.size(48.dp).clip(MaterialTheme.shapes.small)
+                                )
+                            },
+                            headlineContent = { Text(selectedReferenceSong!!.title, maxLines = 1) },
                             supportingContent = { Text("Reference Song") },
                             trailingContent = {
                                 TextButton(onClick = { selectedReferenceSong = null }) {
@@ -137,16 +153,31 @@ fun DiscoverView(context: ViewContext) {
 
             Spacer(modifier = Modifier.height(16.dp))
 
-            // Sliders
-            Text("Track Count: ${trackCount.toInt()}")
-            Slider(
-                value = trackCount,
-                onValueChange = { trackCount = it },
-                valueRange = 5f..100f,
-                steps = 19
-            )
+            // Limit Mode Switcher
+            TabRow(selectedTabIndex = limitMode) {
+                Tab(
+                    selected = limitMode == 0,
+                    onClick = { limitMode = 0 },
+                    text = { Text("Limit by Count") }
+                )
+                Tab(
+                    selected = limitMode == 1,
+                    onClick = { limitMode = 1 },
+                    text = { Text("Limit by Similarity") }
+                )
+            }
+            Spacer(modifier = Modifier.height(16.dp))
 
-            if (searchMode == 1) {
+            // Sliders
+            if (limitMode == 0) {
+                Text("Track Count: ${trackCount.toInt()}")
+                Slider(
+                    value = trackCount,
+                    onValueChange = { trackCount = it },
+                    valueRange = 5f..100f,
+                    steps = 19
+                )
+            } else {
                 Text("Similarity: ${similarityThreshold.toInt()}%")
                 Slider(
                     value = similarityThreshold,
@@ -163,7 +194,7 @@ fun DiscoverView(context: ViewContext) {
                     coroutineScope.launch {
                         isGenerating = true
                         generatedSongs = null
-                        val limit = trackCount.toInt()
+                        val limit = if (limitMode == 0) trackCount.toInt() else 500
                         
                         val filePaths = if (searchMode == 0) {
                             context.symphony.semanticSearch.search(textQuery, limit)
@@ -175,16 +206,20 @@ fun DiscoverView(context: ViewContext) {
                                     (selectedReferenceSong!!.duration / 1000).toInt(),
                                     limit
                                 )
-                                // Convert similarity to distance roughly: 100% = 0.0, 0% = 2.0
-                                val maxDistance = 2.0f - (similarityThreshold / 100f * 2.0f)
-                                results.filter { it.hybridScore >= (similarityThreshold / 100f) }.mapNotNull { it.track.filePath }
+                                if (limitMode == 1) {
+                                    results.filter { it.hybridScore >= (similarityThreshold / 100f) }.mapNotNull { it.track.filePath }
+                                } else {
+                                    results.mapNotNull { it.track.filePath }
+                                }
                             } else emptyList()
                         }
                         
                         val resolvedSongs = filePaths.mapNotNull { path ->
-                            allSongs.find { it.path == path }
+                            allSongs.find { it.path == path || it.path.endsWith(path, ignoreCase = true) }
                         }
                         generatedSongs = resolvedSongs
+                        selectedGeneratedSongs.clear()
+                        selectedGeneratedSongs.addAll(resolvedSongs.map { it.id })
                         isGenerating = false
                     }
                 },
@@ -210,32 +245,40 @@ fun DiscoverView(context: ViewContext) {
                         horizontalArrangement = Arrangement.SpaceBetween,
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Text("Found ${songs.size} songs", style = MaterialTheme.typography.titleMedium)
+                        Text("${selectedGeneratedSongs.size} selected", style = MaterialTheme.typography.titleMedium)
                         Row {
                             TextButton(onClick = {
                                 showAddToPlaylistDialog = true
-                            }) {
-                                Text("Save to Playlists")
+                            }, enabled = selectedGeneratedSongs.isNotEmpty()) {
+                                Text("Save")
                             }
                             TextButton(onClick = {
                                 context.symphony.radio.shorty.playQueue(
-                                    songs.map { it.id }
+                                    selectedGeneratedSongs.toList()
                                 )
-                            }) {
-                                Text("Play Now")
+                            }, enabled = selectedGeneratedSongs.isNotEmpty()) {
+                                Text("Play")
                             }
                         }
                     }
                     LazyColumn(modifier = Modifier.weight(1f)) {
                         itemsIndexed(songs) { index, song ->
+                            val isSelected = selectedGeneratedSongs.contains(song.id)
                             SongCard(
                                 context = context,
                                 song = song,
-                                onClick = {
-                                    context.symphony.radio.shorty.playQueue(
-                                        songs.map { it.id },
-                                        options = io.github.zyrouge.symphony.services.radio.Radio.PlayOptions(index = index)
+                                leading = {
+                                    Checkbox(
+                                        checked = isSelected,
+                                        onCheckedChange = { checked ->
+                                            if (checked) selectedGeneratedSongs.add(song.id)
+                                            else selectedGeneratedSongs.remove(song.id)
+                                        }
                                     )
+                                },
+                                onClick = {
+                                    if (isSelected) selectedGeneratedSongs.remove(song.id)
+                                    else selectedGeneratedSongs.add(song.id)
                                 }
                             )
                         }
@@ -244,7 +287,7 @@ fun DiscoverView(context: ViewContext) {
                     if (showAddToPlaylistDialog) {
                         AddToPlaylistDialog(
                             context = context,
-                            songIds = songs.map { it.id },
+                            songIds = selectedGeneratedSongs.toList(),
                             onDismissRequest = {
                                 showAddToPlaylistDialog = false
                             }
