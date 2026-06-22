@@ -81,6 +81,20 @@ fun SongCard(
         derivedStateOf { favoriteSongIds.contains(song.id) }
     }
 
+    val isSemanticSearchEnabled by context.symphony.settings.isSemanticSearchEnabled.flow.collectAsState()
+    val isSemanticSearchReady by context.symphony.semanticSearch.isReady.collectAsState()
+    val showAiOption = isSemanticSearchEnabled && isSemanticSearchReady
+
+    val isEmbedded = remember(song, showAiOption) {
+        if (showAiOption) {
+            context.symphony.semanticSearch.repository?.isTrackEmbedded(
+                title = song.title,
+                artist = song.artists.joinToString(),
+                durationMs = song.duration
+            ) ?: false
+        } else false
+    }
+
     Card(
         modifier = Modifier.fillMaxWidth(),
         colors = CardDefaults.cardColors(containerColor = Color.Transparent),
@@ -138,9 +152,19 @@ fun SongCard(
                         maxLines = 2,
                         overflow = TextOverflow.Ellipsis,
                     )
-                    if (song.artists.isNotEmpty()) {
+                    val artistText = buildString {
+                        if (song.artists.isNotEmpty()) {
+                            append(song.artists.joinToString())
+                        }
+                        if (isEmbedded) {
+                            if (isNotEmpty()) append(" • ")
+                            append("✨")
+                        }
+                    }
+
+                    if (artistText.isNotEmpty()) {
                         Text(
-                            song.artists.joinToString(),
+                            artistText,
                             style = MaterialTheme.typography.bodySmall,
                             maxLines = 2,
                             overflow = TextOverflow.Ellipsis,

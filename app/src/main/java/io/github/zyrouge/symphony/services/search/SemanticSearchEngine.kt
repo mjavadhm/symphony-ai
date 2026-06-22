@@ -110,6 +110,7 @@ class SemanticSearchEngine(val symphony: Symphony) : Symphony.Hooks {
                     )
                     saved++
                 }
+                repository?.invalidateCache()
                 Result.success(saved)
             } catch (e: Exception) {
                 e.printStackTrace()

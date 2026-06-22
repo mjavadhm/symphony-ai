@@ -15,6 +15,38 @@ class SemanticSearchRepository(boxStore: BoxStore) {
     private val trackBox: Box<TrackEntity> = boxStore.boxFor(TrackEntity::class.java)
     private val chunkBox: Box<TrackChunkEntity> = boxStore.boxFor(TrackChunkEntity::class.java)
 
+    private var embeddedTracksCache: Set<String>? = null
+
+    fun isTrackEmbedded(title: String, artist: String, durationMs: Long): Boolean {
+        if (embeddedTracksCache == null) {
+            val cache = mutableSetOf<String>()
+            val tracks = trackBox.all
+            for (track in tracks) {
+                val t = track.title?.lowercase() ?: ""
+                val a = track.artist?.lowercase() ?: ""
+                val d = track.durationSeconds
+                cache.add("$t|$a|$d")
+            }
+            embeddedTracksCache = cache
+        }
+        
+        val t = title.lowercase()
+        val a = artist.lowercase()
+        val d = (durationMs / 1000).toInt()
+        
+        // Check with ±2 seconds tolerance
+        for (offset in -2..2) {
+            if (embeddedTracksCache?.contains("$t|$a|${d + offset}") == true) {
+                return true
+            }
+        }
+        return false
+    }
+
+    fun invalidateCache() {
+        embeddedTracksCache = null
+    }
+
     /**
      * ذخیره یک آهنگ با چانک‌های متعدد و محاسبه میانگین امبدینگ.
      */
@@ -139,6 +171,7 @@ class SemanticSearchRepository(boxStore: BoxStore) {
     fun clearAll() {
         trackBox.removeAll()
         chunkBox.removeAll()
+        invalidateCache()
     }
     
     private fun normalize(array: FloatArray): FloatArray {
