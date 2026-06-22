@@ -38,9 +38,12 @@ fun DiscoverView(context: ViewContext) {
     // For song search mode
     var songSearchQuery by remember { mutableStateOf("") }
     var selectedReferenceSong by remember { mutableStateOf<Song?>(null) }
-    val allSongs = context.symphony.groove.song.all
-    val filteredSongs = remember(songSearchQuery) {
-        if (songSearchQuery.isBlank()) emptyList()
+    val allSongIds by context.symphony.groove.song.all.collectAsState()
+    val allSongs = remember(allSongIds) {
+        allSongIds.mapNotNull { context.symphony.groove.song.get(it) }
+    }
+    val filteredSongs = remember(songSearchQuery, allSongs) {
+        if (songSearchQuery.isBlank()) emptyList<Song>()
         else allSongs.filter { it.title.contains(songSearchQuery, ignoreCase = true) || it.artists.any { a -> a.contains(songSearchQuery, ignoreCase = true) } }.take(5)
     }
 
@@ -66,21 +69,17 @@ fun DiscoverView(context: ViewContext) {
                 .padding(horizontal = 16.dp)
         ) {
             // Mode Switcher
-            SingleChoiceSegmentedButtonRow(modifier = Modifier.fillMaxWidth()) {
-                SegmentedButton(
+            TabRow(selectedTabIndex = searchMode) {
+                Tab(
                     selected = searchMode == 0,
                     onClick = { searchMode = 0 },
-                    shape = SegmentedButtonDefaults.itemShape(index = 0, count = 2)
-                ) {
-                    Text("Prompt")
-                }
-                SegmentedButton(
+                    text = { Text("Prompt") }
+                )
+                Tab(
                     selected = searchMode == 1,
                     onClick = { searchMode = 1 },
-                    shape = SegmentedButtonDefaults.itemShape(index = 1, count = 2)
-                ) {
-                    Text("Reference Song")
-                }
+                    text = { Text("Reference Song") }
+                )
             }
             Spacer(modifier = Modifier.height(16.dp))
 
@@ -178,12 +177,12 @@ fun DiscoverView(context: ViewContext) {
                                 )
                                 // Convert similarity to distance roughly: 100% = 0.0, 0% = 2.0
                                 val maxDistance = 2.0f - (similarityThreshold / 100f * 2.0f)
-                                results.filter { it.distance <= maxDistance }.mapNotNull { it.track.filePath }
+                                results.filter { it.hybridScore >= (similarityThreshold / 100f) }.mapNotNull { it.track.filePath }
                             } else emptyList()
                         }
                         
                         val resolvedSongs = filePaths.mapNotNull { path ->
-                            context.symphony.groove.song.all.find { it.path == path }
+                            allSongs.find { it.path == path }
                         }
                         generatedSongs = resolvedSongs
                         isGenerating = false
@@ -230,18 +229,13 @@ fun DiscoverView(context: ViewContext) {
                     }
                     LazyColumn(modifier = Modifier.weight(1f)) {
                         itemsIndexed(songs) { index, song ->
-                            SongListTile(
+                            SongCard(
                                 context = context,
                                 song = song,
-                                isActive = false,
-                                isPlaying = false,
-                                trailingContent = {
-                                    SongOptionsMenu(
-                                        context = context,
-                                        song = song,
-                                        isFromAlbum = false,
-                                        isFromPlaylist = false,
-                                        onRemoveFromPlaylist = null
+                                onClick = {
+                                    context.symphony.radio.shorty.playQueue(
+                                        songs.map { it.id },
+                                        options = io.github.zyrouge.symphony.services.radio.Radio.PlayOptions(index = index)
                                     )
                                 }
                             )
