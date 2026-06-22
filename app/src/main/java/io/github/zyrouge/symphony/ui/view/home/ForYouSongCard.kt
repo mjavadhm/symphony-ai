@@ -123,9 +123,9 @@ fun ForYouSongCard(
                         maxLines = 2,
                         overflow = TextOverflow.Ellipsis,
                     )
-                    song.artistName?.let {
+                    if (song.artists.isNotEmpty()) {
                         Text(
-                            it,
+                            song.artists.joinToString(", "),
                             style = MaterialTheme.typography.bodyMedium,
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis,
