@@ -5,6 +5,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.AutoAwesome
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
@@ -27,7 +28,7 @@ fun IndexSongsSettingsView(context: ViewContext) {
     val coroutineScope = rememberCoroutineScope()
     val snackbarHostState = remember { SnackbarHostState() }
 
-    val allSongs by context.symphony.groove.song.all.collectAsState()
+    val allSongIds by context.symphony.groove.song.all.collectAsState()
     val repository = context.symphony.semanticSearch.repository
     val isReady by context.symphony.semanticSearch.isReady.collectAsState()
 
@@ -37,11 +38,11 @@ fun IndexSongsSettingsView(context: ViewContext) {
     var progressText by remember { mutableStateOf("") }
     var progressCount by remember { mutableStateOf(0) }
 
-    LaunchedEffect(allSongs, isReady, isProcessing) {
+    LaunchedEffect(allSongIds, isReady, isProcessing) {
         if (!isReady || repository == null || isProcessing) return@LaunchedEffect
         
         // This is safe since it's just checking cache
-        val filtered = allSongs.filter { song ->
+        val filtered = allSongIds.mapNotNull { id -> context.symphony.groove.song.get(id) }.filter { song ->
             !repository.isTrackEmbedded(
                 title = song.title,
                 artist = song.artists.joinToString(),
@@ -88,8 +89,12 @@ fun IndexSongsSettingsView(context: ViewContext) {
                     }
                 },
                 navigationIcon = {
-                    TopAppBarBackButton {
-                        context.navController.popBackStack()
+                    IconButton(
+                        onClick = {
+                            context.navController.popBackStack()
+                        }
+                    ) {
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, null)
                     }
                 },
                 actions = {

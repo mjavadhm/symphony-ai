@@ -190,7 +190,7 @@ class SemanticSearchEngine(val symphony: Symphony) : Symphony.Hooks {
                     filePath = song.path, // We use the path for matching later
                     title = song.title,
                     artist = song.artists.joinToString(),
-                    durationSeconds = song.duration,
+                    durationSeconds = (song.duration / 1000).toInt(),
                     chunkEmbeddings = chunkEmbeddings
                 )
 
