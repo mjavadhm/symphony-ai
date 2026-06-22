@@ -190,6 +190,18 @@ fun SettingsView(context: ViewContext, route: SettingsViewRoute) {
                     HorizontalDivider()
                     SettingsSimpleTile(
                         icon = {
+                            Icon(Icons.Filled.FindInPage, null)
+                        },
+                        title = {
+                            Text("Find Duplicates")
+                        },
+                        onClick = {
+                            context.navController.navigate(io.github.zyrouge.symphony.ui.view.settings.DuplicateSongsSettingsViewRoute)
+                        },
+                    )
+                    HorizontalDivider()
+                    SettingsSimpleTile(
+                        icon = {
                             Icon(Icons.Filled.Radio, null)
                         },
                         title = {

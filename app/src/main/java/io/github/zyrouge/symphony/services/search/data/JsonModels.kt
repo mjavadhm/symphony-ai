@@ -6,6 +6,7 @@ import kotlinx.serialization.Serializable
 data class TrackJson(
     val filename: String,
     val title: String,
+    val artist: String = "",
     val duration: Int,
     val chunks: List<List<Float>>
 )

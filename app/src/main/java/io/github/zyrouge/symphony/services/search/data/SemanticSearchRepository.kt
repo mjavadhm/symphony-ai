@@ -18,7 +18,7 @@ class SemanticSearchRepository(boxStore: BoxStore) {
     /**
      * ذخیره یک آهنگ با چانک‌های متعدد و محاسبه میانگین امبدینگ.
      */
-    fun insertTrack(filePath: String, title: String, durationSeconds: Int, chunkEmbeddings: List<FloatArray>) {
+    fun insertTrack(filePath: String, title: String, artist: String, durationSeconds: Int, chunkEmbeddings: List<FloatArray>) {
         if (chunkEmbeddings.isEmpty()) return
 
         // Calculate mean embedding
@@ -36,6 +36,7 @@ class SemanticSearchRepository(boxStore: BoxStore) {
         val track = TrackEntity(
             filePath = filePath,
             title = title,
+            artist = artist,
             durationSeconds = durationSeconds,
             meanEmbedding = normalizedMean
         )
@@ -88,12 +89,36 @@ class SemanticSearchRepository(boxStore: BoxStore) {
     }
 
     /**
-     * Find tracks similar to a given track by its file path.
-     * Uses the track's mean embedding to search for similar tracks.
+     * Find tracks similar to a given track by matching metadata (title + artist + duration).
+     * Uses the matched track's mean embedding to search for similar tracks.
+     * @param title Song title
+     * @param artist Song artist (can be empty)
+     * @param durationSeconds Song duration in seconds
+     * @param toleranceSeconds Duration match tolerance (default ±2 seconds)
      */
-    fun searchSimilarByFilePath(filePath: String, topN: Int = 20): List<SearchResult> {
+    fun searchSimilarByMetadata(
+        title: String,
+        artist: String,
+        durationSeconds: Int,
+        topN: Int = 20,
+        toleranceSeconds: Int = 2
+    ): List<SearchResult> {
         val allTracks = trackBox.all
-        val sourceTrack = allTracks.find { it.filePath == filePath } ?: return emptyList()
+        
+        // Find source track by metadata
+        val sourceTrack = allTracks.find { track ->
+            val titleMatch = track.title?.equals(title, ignoreCase = true) == true
+            val artistMatch = if (artist.isNotEmpty() && !track.artist.isNullOrEmpty()) {
+                track.artist!!.equals(artist, ignoreCase = true) ||
+                track.artist!!.contains(artist, ignoreCase = true) ||
+                artist.contains(track.artist!!, ignoreCase = true)
+            } else {
+                true // skip artist check if not available
+            }
+            val durationMatch = kotlin.math.abs(track.durationSeconds - durationSeconds) <= toleranceSeconds
+            titleMatch && artistMatch && durationMatch
+        } ?: return emptyList()
+        
         val sourceEmbedding = sourceTrack.meanEmbedding ?: return emptyList()
 
         val results = mutableListOf<SearchResult>()

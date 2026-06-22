@@ -104,6 +104,7 @@ class SemanticSearchEngine(val symphony: Symphony) : Symphony.Hooks {
                     repository?.insertTrack(
                         filePath = track.filename,
                         title = track.title,
+                        artist = track.artist,
                         durationSeconds = track.duration,
                         chunkEmbeddings = floatArrayChunks
                     )
@@ -140,22 +141,34 @@ class SemanticSearchEngine(val symphony: Symphony) : Symphony.Hooks {
 
     /**
      * Find songs similar to the given song by comparing audio embeddings.
-     * @param songPath The file path of the source song.
+     * Matches the source song by metadata (title + artist + duration).
+     * @param title Song title
+     * @param artist Song artist (can be empty)
+     * @param durationSeconds Song duration in seconds
      * @param limit Maximum number of similar songs to return.
-     * @return List of file paths of similar songs.
+     * @return List of SearchResult containing track info and scores.
      */
-    suspend fun findSimilarSongs(songPath: String, limit: Int = 20): List<String> {
+    suspend fun findSimilarSongs(
+        title: String,
+        artist: String,
+        durationSeconds: Int,
+        limit: Int = 20
+    ): List<io.github.zyrouge.symphony.services.search.data.SearchResult> {
         return withContext(Dispatchers.Default) {
             try {
                 if (_isReady.value.not() || repository == null) {
-                    return@withContext emptyList<String>()
+                    return@withContext emptyList()
                 }
 
-                val results = repository!!.searchSimilarByFilePath(songPath, topN = limit)
-                results.mapNotNull { it.track.filePath }
+                repository!!.searchSimilarByMetadata(
+                    title = title,
+                    artist = artist,
+                    durationSeconds = durationSeconds,
+                    topN = limit
+                )
             } catch (e: Exception) {
                 e.printStackTrace()
-                emptyList<String>()
+                emptyList()
             }
         }
     }

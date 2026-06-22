@@ -35,6 +35,15 @@ data class DocumentFileX(
         return items
     }
 
+    fun delete(): Boolean {
+        return try {
+            DocumentsContract.deleteDocument(context.contentResolver, uri)
+        } catch (e: Exception) {
+            e.printStackTrace()
+            false
+        }
+    }
+
     companion object {
         val selectionColumns = arrayOf(
             DocumentsContract.Document.COLUMN_DOCUMENT_ID,

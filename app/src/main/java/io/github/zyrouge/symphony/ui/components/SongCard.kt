@@ -287,30 +287,54 @@ fun SongDropdownMenu(
                     isCreatingAiPlaylist = true
                     coroutineScope.launch {
                         try {
-                            val similarPaths = context.symphony.semanticSearch.findSimilarSongs(song.path)
+                            val similarResults = context.symphony.semanticSearch.findSimilarSongs(
+                                title = song.title,
+                                artist = song.artists.firstOrNull() ?: "",
+                                durationSeconds = (song.duration / 1000).toInt()
+                            )
                             val allSongs = context.symphony.groove.song.values()
                             val matchedSongIds = mutableListOf(song.id)
-                            for (path in similarPaths) {
-                                val matched = allSongs.find {
-                                    it.path == path || it.filename == path || it.path.endsWith(path)
+                            
+                            for (result in similarResults) {
+                                val track = result.track
+                                val matched = allSongs.find { s ->
+                                    val titleMatch = track.title?.equals(s.title, ignoreCase = true) == true
+                                    val artistMatch = if (!track.artist.isNullOrEmpty() && s.artists.isNotEmpty()) {
+                                        val sArtist = s.artists.joinToString(", ")
+                                        track.artist!!.contains(sArtist, ignoreCase = true) || sArtist.contains(track.artist!!, ignoreCase = true)
+                                    } else true
+                                    val durationMatch = kotlin.math.abs(track.durationSeconds - (s.duration / 1000).toInt()) <= 2
+                                    
+                                    titleMatch && artistMatch && durationMatch
                                 }
+                                
                                 if (matched != null && !matchedSongIds.contains(matched.id)) {
                                     matchedSongIds.add(matched.id)
                                 }
                             }
+                            
+                            if (matchedSongIds.size <= 1) {
+                                Toast.makeText(
+                                    context.activity,
+                                    "این آهنگ هنوز اسکن/امبد نشده یا آهنگ مشابهی پیدا نشد.",
+                                    Toast.LENGTH_LONG
+                                ).show()
+                                return@launch
+                            }
+                            
                             val playlistTitle = "AI Mix: ${song.title}"
                             val playlist = context.symphony.groove.playlist.create(playlistTitle, matchedSongIds)
                             context.symphony.groove.playlist.add(playlist)
                             Toast.makeText(
                                 context.activity,
-                                "Playlist \"$playlistTitle\" created with ${matchedSongIds.size} songs",
+                                "پلی‌لیست \"$playlistTitle\" با ${matchedSongIds.size} آهنگ ساخته شد",
                                 Toast.LENGTH_SHORT
                             ).show()
                         } catch (e: Exception) {
                             e.printStackTrace()
                             Toast.makeText(
                                 context.activity,
-                                "Failed to create AI playlist",
+                                "خطا در ساخت پلی‌لیست AI",
                                 Toast.LENGTH_SHORT
                             ).show()
                         } finally {

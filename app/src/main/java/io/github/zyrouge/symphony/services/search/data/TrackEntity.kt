@@ -10,6 +10,7 @@ data class TrackEntity(
     @Id var id: Long = 0,
     var filePath: String? = null,
     var title: String? = null,
+    var artist: String? = null,
     var durationSeconds: Int = 0,
     var meanEmbedding: FloatArray? = null
 ) {
