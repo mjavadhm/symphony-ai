@@ -329,7 +329,7 @@ fun GrooveSettingsView(context: ViewContext, route: GrooveSettingsViewRoute) {
                                 try {
                                     val history = context.symphony.database.playbackHistory.getAllHistory()
                                     val csv = StringBuilder()
-                                    csv.append("Song ID,Title,Artist,Played At (Unix Ms),Duration Played (ms),Total Duration (ms),Percentage Played\n")
+                                    csv.append("Song ID,Title,Artist,Played At (Unix Ms),Duration Played (ms),Total Duration (ms),Percentage Played,Shuffle Mode,Loop Mode\n")
                                     for (record in history) {
                                         val song = context.symphony.groove.song.get(record.songId)
                                         val title = song?.title?.replace(",", "") ?: "Unknown"
@@ -341,7 +341,9 @@ fun GrooveSettingsView(context: ViewContext, route: GrooveSettingsViewRoute) {
                                         } else {
                                             "0%"
                                         }
-                                        csv.append("${record.songId},$title,$artist,${record.playedAt},$durationPlayed,$totalDuration,$percentage\n")
+                                        val shuffleMode = if (record.isShuffleMode) "Yes" else "No"
+                                        val loopMode = record.loopMode
+                                        csv.append("${record.songId},$title,$artist,${record.playedAt},$durationPlayed,$totalDuration,$percentage,$shuffleMode,$loopMode\n")
                                     }
                                     
                                     val file = java.io.File(android.os.Environment.getExternalStoragePublicDirectory(android.os.Environment.DIRECTORY_DOWNLOADS), "symphony_playback_history.csv")

@@ -332,7 +332,9 @@ class Radio(private val symphony: Symphony) : Symphony.Hooks {
                         val history = io.github.zyrouge.symphony.services.database.entities.PlaybackHistory(
                             songId = p.id,
                             playedAt = System.currentTimeMillis(),
-                            durationPlayed = p.activelyPlayedMs
+                            durationPlayed = p.activelyPlayedMs,
+                            isShuffleMode = queue.currentShuffleMode,
+                            loopMode = queue.currentLoopMode.name
                         )
                         symphony.database.playbackHistory.insert(history)
                     } catch (e: Exception) {

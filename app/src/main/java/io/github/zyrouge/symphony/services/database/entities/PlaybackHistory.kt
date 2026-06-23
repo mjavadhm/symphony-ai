@@ -8,5 +8,7 @@ data class PlaybackHistory(
     @PrimaryKey(autoGenerate = true) val id: Long = 0,
     val songId: String,
     val playedAt: Long,
-    val durationPlayed: Long
+    val durationPlayed: Long,
+    val isShuffleMode: Boolean = false,
+    val loopMode: String = "None"
 )
