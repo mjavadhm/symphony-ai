@@ -11,7 +11,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import io.github.zyrouge.symphony.ui.helpers.ViewContext
 import io.github.zyrouge.symphony.ui.view.settings.IndexSongsSettingsRoute
-import io.github.zyrouge.symphony.ui.view.settings.SemanticSearchSettingsRoute
+import io.github.zyrouge.symphony.ui.view.settings.SemanticSearchSettingsViewRoute
 
 @Composable
 fun AiSetupChecklist(context: ViewContext) {
@@ -38,13 +38,13 @@ fun AiSetupChecklist(context: ViewContext) {
                 done = hasAudio,
                 label = "Import the audio encoder model",
                 actionLabel = "Import",
-            ) { context.navController.navigate(SemanticSearchSettingsRoute) }
+            ) { context.navController.navigate(SemanticSearchSettingsViewRoute) }
 
             ChecklistRow(
                 done = hasText,
                 label = "Import the text encoder model",
                 actionLabel = "Import",
-            ) { context.navController.navigate(SemanticSearchSettingsRoute) }
+            ) { context.navController.navigate(SemanticSearchSettingsViewRoute) }
 
             ChecklistRow(
                 done = indexedCount > 0L,

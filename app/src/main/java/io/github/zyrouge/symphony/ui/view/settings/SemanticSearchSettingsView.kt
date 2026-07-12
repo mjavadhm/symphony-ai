@@ -27,6 +27,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.unit.dp
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.setValue
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Modifier
@@ -36,11 +37,13 @@ import io.github.zyrouge.symphony.ui.components.IconButtonPlaceholder
 import io.github.zyrouge.symphony.ui.components.TopAppBarMinimalTitle
 import io.github.zyrouge.symphony.ui.components.settings.SettingsSideHeading
 import io.github.zyrouge.symphony.ui.components.settings.SettingsSwitchTile
+import io.github.zyrouge.symphony.ui.components.settings.SettingsSimpleTile
 import io.github.zyrouge.symphony.ui.components.ModelStatusCard
 import androidx.compose.runtime.mutableStateOf
 import io.github.zyrouge.symphony.ui.helpers.ViewContext
 import kotlinx.coroutines.launch
 import kotlinx.serialization.Serializable
+import androidx.compose.foundation.layout.fillMaxWidth
 
 @Serializable
 object SemanticSearchSettingsViewRoute
@@ -175,7 +178,7 @@ fun SemanticSearchSettingsView(context: ViewContext) {
                         )
                         
                         HorizontalDivider()
-                        io.github.zyrouge.symphony.ui.components.settings.SettingsSimpleTile(
+                        SettingsSimpleTile(
                             icon = {
                                 Icon(Icons.Filled.DataObject, null)
                             },
