@@ -258,6 +258,12 @@ class SemanticSearchEngine(val symphony: Symphony) : Symphony.Hooks {
         indexingJob = null
     }
 
+    fun clearIndexingResult() {
+        if (!_indexingState.value.isActive) {
+            _indexingState.value = IndexingState()
+        }
+    }
+
     suspend fun search(query: String, limit: Int = 10): List<String> {
         return withContext(Dispatchers.Default) {
             try {

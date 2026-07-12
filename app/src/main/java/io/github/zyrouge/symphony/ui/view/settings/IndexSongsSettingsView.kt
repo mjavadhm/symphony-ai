@@ -118,6 +118,50 @@ fun IndexSongsSettingsView(context: ViewContext) {
                 }
             }
 
+            // خلاصه آخرین اجرا (وقتی تموم شده و خطا داشته)
+            if (!indexingState.isActive && indexingState.total > 0 && indexingState.failedCount > 0) {
+                item {
+                    Card(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 16.dp, vertical = 8.dp),
+                        colors = CardDefaults.cardColors(
+                            containerColor = MaterialTheme.colorScheme.errorContainer
+                        )
+                    ) {
+                        Column(modifier = Modifier.padding(16.dp)) {
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Text(
+                                    "Last run: ${indexingState.current - indexingState.failedCount} indexed, " +
+                                        "${indexingState.failedCount} failed",
+                                    style = MaterialTheme.typography.titleSmall,
+                                    color = MaterialTheme.colorScheme.onErrorContainer,
+                                    modifier = Modifier.weight(1f)
+                                )
+                                IconButton(onClick = { context.symphony.semanticSearch.clearIndexingResult() }) {
+                                    Icon(Icons.Filled.Close, contentDescription = "Clear", tint = MaterialTheme.colorScheme.onErrorContainer)
+                                }
+                            }
+                            Spacer(Modifier.height(8.dp))
+                            TextButton(
+                                onClick = {
+                                    val failedSongs = indexingState.failedSongIds
+                                        .mapNotNull { context.symphony.groove.song.get(it) }
+                                    context.symphony.semanticSearch.startIndexing(failedSongs)
+                                },
+                                colors = ButtonDefaults.textButtonColors(contentColor = MaterialTheme.colorScheme.onErrorContainer)
+                            ) {
+                                Text("Retry failed songs")
+                            }
+                        }
+                    }
+                }
+            }
+
             item {
                 Row(
                     modifier = Modifier

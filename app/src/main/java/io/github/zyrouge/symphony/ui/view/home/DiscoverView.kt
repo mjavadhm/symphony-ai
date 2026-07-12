@@ -70,6 +70,10 @@ fun DiscoverView(context: ViewContext) {
                 .padding(horizontal = 16.dp)
         ) {
             item {
+                IndexingStatusBanner(context)
+            }
+            
+            item {
                 Column(modifier = Modifier.fillMaxWidth()) {
                     // Mode Switcher
                     TabRow(selectedTabIndex = searchMode) {
