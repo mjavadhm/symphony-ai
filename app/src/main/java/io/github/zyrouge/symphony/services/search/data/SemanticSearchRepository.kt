@@ -47,6 +47,8 @@ class SemanticSearchRepository(boxStore: BoxStore) {
         embeddedTracksCache = null
     }
 
+    fun getIndexedTrackCount(): Long = trackBox.count()
+
     /**
      * ذخیره یک آهنگ با چانک‌های متعدد و محاسبه میانگین امبدینگ.
      */

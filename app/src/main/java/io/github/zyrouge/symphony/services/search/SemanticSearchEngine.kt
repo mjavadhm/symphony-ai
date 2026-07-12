@@ -21,6 +21,10 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.flow.update
 import io.github.zyrouge.symphony.services.groove.Song
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.SupervisorJob
+import io.github.zyrouge.symphony.services.search.SemanticIndexingService
+import io.github.zyrouge.symphony.services.search.ml.ImportedModelInfo
 
 data class IndexingState(
     val isActive: Boolean = false,
@@ -32,12 +36,32 @@ data class IndexingState(
     val startedAt: Long = 0L,
 )
 
+data class JsonImportState(
+    val isActive: Boolean = false,
+    val count: Int = 0,
+    val text: String = "",
+)
+
 class SemanticSearchEngine(val symphony: Symphony) : Symphony.Hooks {
+    companion object {
+        @Volatile
+        var activeInstance: SemanticSearchEngine? = null
+    }
+
+    private val indexingScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+
+    init {
+        activeInstance = this
+    }
+
     private val _isReady = MutableStateFlow(false)
     val isReady = _isReady.asStateFlow()
 
     private val _indexingState = MutableStateFlow(IndexingState())
     val indexingState = _indexingState.asStateFlow()
+
+    private val _jsonImportState = MutableStateFlow(JsonImportState())
+    val jsonImportState = _jsonImportState.asStateFlow()
 
     private var indexingJob: Job? = null
 
@@ -96,11 +120,14 @@ class SemanticSearchEngine(val symphony: Symphony) : Symphony.Hooks {
         }
     }
 
-    suspend fun importModel(uri: Uri, isAudio: Boolean): Result<Unit> {
+    suspend fun importModel(uri: Uri, isAudio: Boolean): Result<ImportedModelInfo> {
         return withContext(Dispatchers.IO) {
             modelManager.importModel(uri, isAudio)
         }
     }
+
+    fun getModelInfo(isAudio: Boolean) = modelManager.getModelInfo(isAudio)
+    fun deleteModel(isAudio: Boolean) = modelManager.deleteModel(isAudio)
 
     suspend fun importJsonDatabase(
         jsonUri: Uri,
@@ -193,20 +220,21 @@ class SemanticSearchEngine(val symphony: Symphony) : Symphony.Hooks {
                 val decoder = io.github.zyrouge.symphony.services.search.ml.AudioDecoder(symphony.applicationContext)
                 val melExtractor = io.github.zyrouge.symphony.services.search.ml.MelSpectrogramExtractor()
 
-                val chunks = decoder.extractChunks(song.uri)
-                if (chunks.isEmpty()) {
-                    return@withContext Result.failure(Exception("Could not extract audio chunks from the song."))
-                }
-
+                // ✅ هر چانک: decode → mel → embed → دور انداختن PCM
+                // فقط امبدینگهای ۵۱۲تایی نگه داشته میشن (ناچیز)
                 val chunkEmbeddings = mutableListOf<FloatArray>()
-                for (chunk in chunks) {
+                val count = decoder.streamChunks(song.uri) { chunk ->
                     val melSpec = melExtractor.extract(chunk.floatArray)
                     val embedding = modelRunner!!.getAudioEmbedding(melSpec)
                     chunkEmbeddings.add(embedding)
                 }
 
+                if (count == 0) {
+                    return@withContext Result.failure(Exception("Could not extract audio chunks from the song."))
+                }
+
                 repository!!.insertTrack(
-                    filePath = song.path, // We use the path for matching later
+                    filePath = song.path,
                     title = song.title,
                     artist = song.artists.joinToString(),
                     durationSeconds = (song.duration / 1000).toInt(),
@@ -215,9 +243,29 @@ class SemanticSearchEngine(val symphony: Symphony) : Symphony.Hooks {
 
                 repository!!.invalidateCache()
                 Result.success(Unit)
-            } catch (e: Exception) {
+            } catch (e: kotlinx.coroutines.CancellationException) {
+                throw e // کنسل شدن باید عبور کنه، وگرنه Cancel دکمه خراب میشه
+            } catch (e: Throwable) {
+                // ✅ Throwable به جای Exception → OutOfMemoryError هم گرفته میشه
                 e.printStackTrace()
-                Result.failure(e)
+                Result.failure(Exception(e))
+            }
+        }
+    }
+
+    fun startJsonImport(uri: android.net.Uri) {
+        if (_jsonImportState.value.isActive) return
+        indexingScope.launch {
+            _jsonImportState.value = JsonImportState(isActive = true, text = "Starting import…")
+            val res = importJsonDatabase(uri) { count, text ->
+                _jsonImportState.value = JsonImportState(true, count, text)
+            }
+            _jsonImportState.update {
+                it.copy(
+                    isActive = false,
+                    text = if (res.isSuccess) "Imported ${res.getOrNull() ?: 0} tracks"
+                    else "Import failed: ${res.exceptionOrNull()?.message}",
+                )
             }
         }
     }
@@ -225,16 +273,18 @@ class SemanticSearchEngine(val symphony: Symphony) : Symphony.Hooks {
     fun startIndexing(songs: List<Song>) {
         if (_indexingState.value.isActive || songs.isEmpty()) return
 
-        indexingJob = symphony.viewModelScope.launch(Dispatchers.Default) {
-            _indexingState.value = IndexingState(
-                isActive = true,
-                total = songs.size,
-                startedAt = System.currentTimeMillis(),
-            )
+        _indexingState.value = IndexingState(
+            isActive = true,
+            total = songs.size,
+            startedAt = System.currentTimeMillis(),
+        )
+        SemanticIndexingService.start(symphony.applicationContext)
+
+        indexingJob = indexingScope.launch {
             val failed = mutableListOf<String>()
             try {
                 for (song in songs) {
-                    ensureActive() // نقطهی cancel امن
+                    ensureActive()
                     _indexingState.update { it.copy(currentTitle = song.title) }
                     val result = embedSongLocal(song)
                     if (result.isFailure) failed.add(song.id)
@@ -247,7 +297,6 @@ class SemanticSearchEngine(val symphony: Symphony) : Symphony.Hooks {
                     }
                 }
             } finally {
-                // چه تموم بشه چه cancel، از حالت active خارج میشیم
                 _indexingState.update { it.copy(isActive = false, currentTitle = "") }
             }
         }
@@ -263,6 +312,8 @@ class SemanticSearchEngine(val symphony: Symphony) : Symphony.Hooks {
             _indexingState.value = IndexingState()
         }
     }
+
+    fun indexedTrackCount(): Long = repository?.getIndexedTrackCount() ?: 0L
 
     suspend fun search(query: String, limit: Int = 10): List<String> {
         return withContext(Dispatchers.Default) {

@@ -16,13 +16,13 @@ class AudioDecoder(private val context: Context) {
         val offsetSeconds: Int
     )
 
-    fun extractChunks(uri: Uri): List<AudioChunk> {
+    fun streamChunks(uri: Uri, onChunk: (AudioChunk) -> Unit): Int {
         val extractor = MediaExtractor()
         try {
             extractor.setDataSource(context, uri, null)
         } catch (e: Exception) {
             Log.e("AudioDecoder", "Failed to set data source for $uri", e)
-            return emptyList()
+            return 0
         }
 
         var trackIndex = -1
@@ -44,7 +44,7 @@ class AudioDecoder(private val context: Context) {
 
         if (trackIndex < 0) {
             extractor.release()
-            return emptyList()
+            return 0
         }
 
         val durationSeconds = (durationUs / 1000000).toInt()
@@ -53,28 +53,29 @@ class AudioDecoder(private val context: Context) {
         for (i in 0 until durationSeconds step chunkLength) {
             offsets.add(i)
         }
-
         if (offsets.size > 20) {
-            Log.d("AudioDecoder", "Song has ${offsets.size} parts. Limiting to first 20.")
             offsets.retainAll(offsets.take(20).toSet())
         }
 
-        val results = mutableListOf<AudioChunk>()
-
+        var count = 0
         for (offset in offsets) {
-            if (durationSeconds - offset < 10 && offsets.size > 1) {
-                continue
-            }
+            if (durationSeconds - offset < 10 && offsets.size > 1) continue
 
-            Log.d("AudioDecoder", "Decoding offset $offset for $chunkLength seconds")
-            val chunkFloats = decodeChunk(extractor, trackIndex, offset, chunkLength, channelCount)
+            val chunkFloats = decodeChunk(extractor, trackIndex, offset, chunkLength, channelCount, sampleRate)
             if (chunkFloats != null && chunkFloats.isNotEmpty()) {
                 val resampled = resampleTo48k(chunkFloats, sampleRate)
-                results.add(AudioChunk(resampled, offset))
+                onChunk(AudioChunk(resampled, offset))   // ← مصرف و رها
+                count++
             }
         }
 
         extractor.release()
+        return count
+    }
+
+    fun extractChunks(uri: Uri): List<AudioChunk> {
+        val results = mutableListOf<AudioChunk>()
+        streamChunks(uri) { results.add(it) }
         return results
     }
     
@@ -103,11 +104,12 @@ class AudioDecoder(private val context: Context) {
         trackIndex: Int,
         offsetSeconds: Int,
         durationSeconds: Int,
-        channelCount: Int
+        channelCount: Int,
+        sampleRate: Int,          // ← جدید
     ): FloatArray? {
         extractor.selectTrack(trackIndex)
         extractor.seekTo(offsetSeconds * 1000000L, MediaExtractor.SEEK_TO_CLOSEST_SYNC)
-        
+
         val format = extractor.getTrackFormat(trackIndex)
         val mime = format.getString(MediaFormat.KEY_MIME) ?: return null
 
@@ -122,7 +124,11 @@ class AudioDecoder(private val context: Context) {
             return null
         }
 
-        val outputFloats = mutableListOf<Float>()
+        // ✅ به جای ArrayList<Float> boxed: آرایه primitive با ظرفیت مشخص
+        val capacity = sampleRate * durationSeconds + sampleRate // +۱ ثانیه حاشیه
+        val output = FloatArray(capacity)
+        var written = 0
+
         var isEOS = false
         var outputEOS = false
         val bufferInfo = MediaCodec.BufferInfo()
@@ -157,22 +163,20 @@ class AudioDecoder(private val context: Context) {
                         outputBuffer.limit(bufferInfo.offset + bufferInfo.size)
 
                         val shortBuffer = outputBuffer.order(ByteOrder.LITTLE_ENDIAN).asShortBuffer()
-                        val floatsThisBuffer = FloatArray(shortBuffer.remaining() / channelCount)
 
-                        for (i in floatsThisBuffer.indices) {
+                        // ✅ نوشتن مستقیم در آرایه، بدون هیچ boxing/کپی اضافه
+                        while (shortBuffer.remaining() >= channelCount && written < capacity) {
                             var sum = 0f
                             for (c in 0 until channelCount) {
-                                val sample = shortBuffer.get()
-                                sum += sample / 32768.0f
+                                sum += shortBuffer.get() / 32768.0f
                             }
-                            floatsThisBuffer[i] = sum / channelCount
+                            output[written++] = sum / channelCount
                         }
-
-                        outputFloats.addAll(floatsThisBuffer.toList())
                     }
                     codec.releaseOutputBuffer(outputBufferId, false)
 
-                    if (bufferInfo.flags and MediaCodec.BUFFER_FLAG_END_OF_STREAM != 0) {
+                    // ✅ ظرفیت پر شد؟ همینجا تمومش کن
+                    if (written >= capacity || (bufferInfo.flags and MediaCodec.BUFFER_FLAG_END_OF_STREAM != 0)) {
                         outputEOS = true
                     }
                 } else if (outputBufferId == MediaCodec.INFO_OUTPUT_FORMAT_CHANGED) {
@@ -189,7 +193,7 @@ class AudioDecoder(private val context: Context) {
             extractor.unselectTrack(trackIndex)
         }
 
-        return outputFloats.toFloatArray()
+        return if (written == 0) null else output.copyOf(written)
     }
 
     private fun resampleTo48k(input: FloatArray, originalSampleRate: Int): FloatArray {

@@ -20,6 +20,10 @@ import io.github.zyrouge.symphony.services.search.IndexingState
 import io.github.zyrouge.symphony.ui.components.*
 import io.github.zyrouge.symphony.ui.helpers.ViewContext
 import kotlinx.serialization.Serializable
+import android.os.Build
+import android.Manifest
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 
 @Serializable
 object IndexSongsSettingsRoute
@@ -36,6 +40,22 @@ fun IndexSongsSettingsView(context: ViewContext) {
 
     var unembeddedSongs by remember { mutableStateOf<List<Song>>(emptyList()) }
     var selectedSongs by remember { mutableStateOf<Set<String>>(emptySet()) }
+
+    var filterQuery by remember { mutableStateOf("") }
+    val visibleSongs = remember(unembeddedSongs, filterQuery) {
+        if (filterQuery.isBlank()) unembeddedSongs
+        else unembeddedSongs.filter {
+            it.title.contains(filterQuery, true) ||
+                it.artists.joinToString().contains(filterQuery, true)
+        }
+    }
+    val indexedCount = remember(unembeddedSongs) {
+        context.symphony.semanticSearch.indexedTrackCount()
+    }
+
+    val notifPermissionLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestPermission()
+    ) { }
 
     // وقتی ایندکس تموم/کنسل میشه، لیست آهنگهای ایندکسنشده رو تازه کن
     LaunchedEffect(allSongIds, isReady, indexingState.isActive) {
@@ -94,6 +114,9 @@ fun IndexSongsSettingsView(context: ViewContext) {
             if (!indexingState.isActive && selectedSongs.isNotEmpty()) {
                 ExtendedFloatingActionButton(
                     onClick = {
+                        if (Build.VERSION.SDK_INT >= 33) {
+                            notifPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
+                        }
                         val songsToProcess = unembeddedSongs.filter { selectedSongs.contains(it.id) }
                         context.symphony.semanticSearch.startIndexing(songsToProcess)
                         selectedSongs = emptySet()
@@ -163,6 +186,24 @@ fun IndexSongsSettingsView(context: ViewContext) {
             }
 
             item {
+                Column(modifier = Modifier.padding(horizontal = 20.dp)) {
+                    Text(
+                        "$indexedCount indexed • ${unembeddedSongs.size} remaining",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    Spacer(Modifier.height(8.dp))
+                    OutlinedTextField(
+                        value = filterQuery,
+                        onValueChange = { filterQuery = it },
+                        modifier = Modifier.fillMaxWidth(),
+                        placeholder = { Text("Filter songs…") },
+                        singleLine = true,
+                    )
+                }
+            }
+
+            item {
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -171,24 +212,29 @@ fun IndexSongsSettingsView(context: ViewContext) {
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Text(
-                        "${unembeddedSongs.size} un-indexed songs",
+                        "${visibleSongs.size} shown",
                         style = MaterialTheme.typography.bodyMedium
                     )
                     TextButton(
                         enabled = !indexingState.isActive,
                         onClick = {
-                            selectedSongs = if (selectedSongs.size == unembeddedSongs.size) emptySet()
-                            else unembeddedSongs.map { it.id }.toSet()
+                            val visibleIds = visibleSongs.map { it.id }.toSet()
+                            selectedSongs = if (selectedSongs.containsAll(visibleIds) && visibleIds.isNotEmpty()) {
+                                selectedSongs - visibleIds
+                            } else {
+                                selectedSongs + visibleIds
+                            }
                         }
                     ) {
+                        val visibleIds = visibleSongs.map { it.id }.toSet()
                         Text(
-                            if (selectedSongs.size == unembeddedSongs.size) "Deselect All" else "Select All"
+                            if (selectedSongs.containsAll(visibleIds) && visibleIds.isNotEmpty()) "Deselect All" else "Select All"
                         )
                     }
                 }
             }
 
-            items(unembeddedSongs, key = { it.id }) { song ->
+            items(visibleSongs, key = { it.id }) { song ->
                 val isSelected = selectedSongs.contains(song.id)
                 Row(
                     modifier = Modifier

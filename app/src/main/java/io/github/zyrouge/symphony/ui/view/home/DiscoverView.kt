@@ -24,6 +24,9 @@ import io.github.zyrouge.symphony.services.groove.Song
 @Composable
 fun DiscoverView(context: ViewContext) {
     val coroutineScope = rememberCoroutineScope()
+    val isReady by context.symphony.semanticSearch.isReady.collectAsState()
+    val hasIndex = remember { context.symphony.semanticSearch.indexedTrackCount() > 0 }
+
     var searchMode by remember { mutableStateOf(0) } // 0 = Text, 1 = Song
     var textQuery by remember { mutableStateOf("") }
     
@@ -73,9 +76,12 @@ fun DiscoverView(context: ViewContext) {
                 IndexingStatusBanner(context)
             }
             
-            item {
-                Column(modifier = Modifier.fillMaxWidth()) {
-                    // Mode Switcher
+            if (!isReady || !hasIndex) {
+                item { AiSetupChecklist(context) }
+            } else {
+                item {
+                    Column(modifier = Modifier.fillMaxWidth()) {
+                        // Mode Switcher
                     TabRow(selectedTabIndex = searchMode) {
                         Tab(
                             selected = searchMode == 0,
@@ -287,14 +293,23 @@ fun DiscoverView(context: ViewContext) {
                     }
                 } else {
                     item {
-                        Text(
-                            "No songs found. Try adjusting your parameters.", 
-                            color = MaterialTheme.colorScheme.error, 
-                            modifier = Modifier.padding(vertical = 16.dp)
-                        )
+                        Column(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(32.dp),
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                        ) {
+                            Text("No matches found", style = MaterialTheme.typography.titleMedium)
+                            Text(
+                                "Try describing mood or genre in English — e.g. \"sad piano\", \"energetic rock for gym\"",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
                     }
                 }
             }
+            } // End of else block
         } // End of LazyColumn
         
         if (showAddToPlaylistDialog) {

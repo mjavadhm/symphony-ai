@@ -35,8 +35,9 @@ import io.github.zyrouge.symphony.ui.components.AdaptiveSnackbar
 import io.github.zyrouge.symphony.ui.components.IconButtonPlaceholder
 import io.github.zyrouge.symphony.ui.components.TopAppBarMinimalTitle
 import io.github.zyrouge.symphony.ui.components.settings.SettingsSideHeading
-import io.github.zyrouge.symphony.ui.components.settings.SettingsSimpleTile
 import io.github.zyrouge.symphony.ui.components.settings.SettingsSwitchTile
+import io.github.zyrouge.symphony.ui.components.ModelStatusCard
+import androidx.compose.runtime.mutableStateOf
 import io.github.zyrouge.symphony.ui.helpers.ViewContext
 import kotlinx.coroutines.launch
 import kotlinx.serialization.Serializable
@@ -53,16 +54,20 @@ fun SemanticSearchSettingsView(context: ViewContext) {
     
     val isSemanticSearchEnabled by context.symphony.settings.isSemanticSearchEnabled.flow.collectAsState()
 
+    var audioInfo by remember { mutableStateOf(context.symphony.semanticSearch.getModelInfo(true)) }
+    var textInfo by remember { mutableStateOf(context.symphony.semanticSearch.getModelInfo(false)) }
+
     val textModelLauncher = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
         if (uri != null) {
             coroutineScope.launch {
                 snackbarHostState.showSnackbar("Importing text model...")
                 val res = context.symphony.semanticSearch.importModel(uri, false)
                 if (res.isSuccess) {
+                    textInfo = context.symphony.semanticSearch.getModelInfo(false)
                     snackbarHostState.showSnackbar("Text model imported successfully")
                     context.symphony.semanticSearch.initializeEngine()
                 } else {
-                    snackbarHostState.showSnackbar("Failed to import text model")
+                    snackbarHostState.showSnackbar("Failed: ${res.exceptionOrNull()?.message}")
                 }
             }
         }
@@ -74,63 +79,21 @@ fun SemanticSearchSettingsView(context: ViewContext) {
                 snackbarHostState.showSnackbar("Importing audio model...")
                 val res = context.symphony.semanticSearch.importModel(uri, true)
                 if (res.isSuccess) {
+                    audioInfo = context.symphony.semanticSearch.getModelInfo(true)
                     snackbarHostState.showSnackbar("Audio model imported successfully")
                     context.symphony.semanticSearch.initializeEngine()
                 } else {
-                    snackbarHostState.showSnackbar("Failed to import audio model")
+                    snackbarHostState.showSnackbar("Failed: ${res.exceptionOrNull()?.message}")
                 }
             }
         }
     }
-
-    val isImportingState = androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf(false) }
-    val importProgressTextState = androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf("") }
-    val importProgressCountState = androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf(0) }
 
     val jsonLauncher = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
-        if (uri != null) {
-            coroutineScope.launch {
-                isImportingState.value = true
-                importProgressCountState.value = 0
-                importProgressTextState.value = "Starting import..."
-                
-                val res = context.symphony.semanticSearch.importJsonDatabase(uri) { count, text ->
-                    importProgressCountState.value = count
-                    importProgressTextState.value = text
-                }
-                
-                isImportingState.value = false
-                
-                if (res.isSuccess) {
-                    val count = res.getOrNull() ?: 0
-                    snackbarHostState.showSnackbar("Successfully imported $count tracks")
-                    context.symphony.semanticSearch.initializeEngine()
-                } else {
-                    snackbarHostState.showSnackbar("Failed to import JSON: ${res.exceptionOrNull()?.message}")
-                }
-            }
-        }
+        if (uri != null) context.symphony.semanticSearch.startJsonImport(uri)
     }
-    
-    if (isImportingState.value) {
-        androidx.compose.material3.AlertDialog(
-            onDismissRequest = { },
-            confirmButton = { },
-            title = { Text("Importing Database") },
-            text = {
-                Column {
-                    androidx.compose.material3.CircularProgressIndicator()
-                    androidx.compose.foundation.layout.Spacer(Modifier.padding(16.dp))
-                    Text("Imported: ${importProgressCountState.value} tracks")
-                    Text(
-                        importProgressTextState.value,
-                        maxLines = 1,
-                        overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
-                    )
-                }
-            }
-        )
-    }
+
+    val jsonImportState by context.symphony.semanticSearch.jsonImportState.collectAsState()
 
     Scaffold(
         modifier = Modifier.fillMaxSize(),
@@ -192,33 +155,27 @@ fun SemanticSearchSettingsView(context: ViewContext) {
                         HorizontalDivider()
                         SettingsSideHeading("Models & Data")
                         
-                        SettingsSimpleTile(
-                            icon = {
-                                Icon(Icons.Filled.Psychology, null)
+                        ModelStatusCard(
+                            title = "Audio Encoder (CLAP)",
+                            info = audioInfo,
+                            onImport = { audioModelLauncher.launch(arrayOf("*/*")) },
+                            onDelete = {
+                                context.symphony.semanticSearch.deleteModel(true)
+                                audioInfo = null
                             },
-                            title = {
-                                Text("Import Text Model (.onnx)")
+                        )
+                        ModelStatusCard(
+                            title = "Text Encoder (RoBERTa)",
+                            info = textInfo,
+                            onImport = { textModelLauncher.launch(arrayOf("*/*")) },
+                            onDelete = {
+                                context.symphony.semanticSearch.deleteModel(false)
+                                textInfo = null
                             },
-                            onClick = {
-                                textModelLauncher.launch(arrayOf("*/*"))
-                            }
                         )
                         
                         HorizontalDivider()
-                        SettingsSimpleTile(
-                            icon = {
-                                Icon(Icons.Filled.Psychology, null)
-                            },
-                            title = {
-                                Text("Import Audio Model (.onnx)")
-                            },
-                            onClick = {
-                                audioModelLauncher.launch(arrayOf("*/*"))
-                            }
-                        )
-                        
-                        HorizontalDivider()
-                        SettingsSimpleTile(
+                        io.github.zyrouge.symphony.ui.components.settings.SettingsSimpleTile(
                             icon = {
                                 Icon(Icons.Filled.DataObject, null)
                             },
@@ -229,6 +186,28 @@ fun SemanticSearchSettingsView(context: ViewContext) {
                                 jsonLauncher.launch(arrayOf("application/json", "*/*"))
                             }
                         )
+
+                        if (jsonImportState.isActive || jsonImportState.text.isNotEmpty()) {
+                            androidx.compose.material3.Card(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(horizontal = 16.dp, vertical = 6.dp)
+                            ) {
+                                Column(modifier = Modifier.padding(16.dp)) {
+                                    if (jsonImportState.isActive) {
+                                        androidx.compose.material3.LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
+                                        androidx.compose.foundation.layout.Spacer(Modifier.padding(8.dp))
+                                        Text("Imported: ${jsonImportState.count} tracks")
+                                    }
+                                    Text(
+                                        jsonImportState.text,
+                                        style = androidx.compose.material3.MaterialTheme.typography.bodySmall,
+                                        maxLines = 1,
+                                        overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
+                                    )
+                                }
+                            }
+                        }
 
                         val isSemanticSearchReady by context.symphony.semanticSearch.isReady.collectAsState()
                         if (isSemanticSearchReady) {
