@@ -3,20 +3,22 @@ package io.github.zyrouge.symphony.ui.view.settings
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.selection.toggleable
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.AutoAwesome
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import io.github.zyrouge.symphony.services.groove.Song
+import io.github.zyrouge.symphony.services.search.IndexingState
 import io.github.zyrouge.symphony.ui.components.*
 import io.github.zyrouge.symphony.ui.helpers.ViewContext
-import kotlinx.coroutines.launch
-import androidx.compose.ui.graphics.Color
-import androidx.compose.foundation.selection.toggleable
-import androidx.compose.ui.Alignment
 import kotlinx.serialization.Serializable
 
 @Serializable
@@ -25,53 +27,43 @@ object IndexSongsSettingsRoute
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun IndexSongsSettingsView(context: ViewContext) {
-    val coroutineScope = rememberCoroutineScope()
     val snackbarHostState = remember { SnackbarHostState() }
 
     val allSongIds by context.symphony.groove.song.all.collectAsState()
     val repository = context.symphony.semanticSearch.repository
     val isReady by context.symphony.semanticSearch.isReady.collectAsState()
+    val indexingState by context.symphony.semanticSearch.indexingState.collectAsState()
 
     var unembeddedSongs by remember { mutableStateOf<List<Song>>(emptyList()) }
     var selectedSongs by remember { mutableStateOf<Set<String>>(emptySet()) }
-    var isProcessing by remember { mutableStateOf(false) }
-    var progressText by remember { mutableStateOf("") }
-    var progressCount by remember { mutableStateOf(0) }
 
-    LaunchedEffect(allSongIds, isReady, isProcessing) {
-        if (!isReady || repository == null || isProcessing) return@LaunchedEffect
-        
-        // This is safe since it's just checking cache
-        val filtered = allSongIds.mapNotNull { id -> context.symphony.groove.song.get(id) }.filter { song ->
-            !repository.isTrackEmbedded(
-                title = song.title,
-                artist = song.artists.joinToString(),
-                durationMs = song.duration
-            )
-        }
+    // وقتی ایندکس تموم/کنسل میشه، لیست آهنگهای ایندکسنشده رو تازه کن
+    LaunchedEffect(allSongIds, isReady, indexingState.isActive) {
+        if (!isReady || repository == null || indexingState.isActive) return@LaunchedEffect
+        val filtered = allSongIds
+            .mapNotNull { id -> context.symphony.groove.song.get(id) }
+            .filter { song ->
+                !repository.isTrackEmbedded(
+                    title = song.title,
+                    artist = song.artists.joinToString(),
+                    durationMs = song.duration
+                )
+            }
         unembeddedSongs = filtered
-        // Don't clear selection unless needed, so we don't lose it on recomposition
         selectedSongs = selectedSongs.intersect(filtered.map { it.id }.toSet())
     }
 
-    if (isProcessing) {
-        androidx.compose.material3.AlertDialog(
-            onDismissRequest = { },
-            confirmButton = { },
-            title = { Text("Indexing Songs") },
-            text = {
-                Column {
-                    androidx.compose.material3.CircularProgressIndicator()
-                    androidx.compose.foundation.layout.Spacer(Modifier.padding(16.dp))
-                    Text("Processed: $progressCount / ${selectedSongs.size}")
-                    Text(
-                        progressText,
-                        maxLines = 1,
-                        overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
-                    )
-                }
-            }
-        )
+    // اسنکبار پایان کار (فقط وقتی از active به inactive میره)
+    var wasActive by remember { mutableStateOf(false) }
+    LaunchedEffect(indexingState.isActive) {
+        if (wasActive && !indexingState.isActive && indexingState.total > 0) {
+            val ok = indexingState.current - indexingState.failedCount
+            snackbarHostState.showSnackbar(
+                if (indexingState.failedCount == 0) "Finished indexing $ok songs!"
+                else "Indexed $ok songs, ${indexingState.failedCount} failed"
+            )
+        }
+        wasActive = indexingState.isActive
     }
 
     Scaffold(
@@ -89,55 +81,43 @@ fun IndexSongsSettingsView(context: ViewContext) {
                     }
                 },
                 navigationIcon = {
-                    IconButton(
-                        onClick = {
-                            context.navController.popBackStack()
-                        }
-                    ) {
+                    IconButton(onClick = { context.navController.popBackStack() }) {
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, null)
-                    }
-                },
-                actions = {
-                    if (selectedSongs.isNotEmpty()) {
-                        IconButton(
-                            onClick = {
-                                val songsToProcess = unembeddedSongs.filter { selectedSongs.contains(it.id) }
-                                if (songsToProcess.isEmpty()) return@IconButton
-                                
-                                isProcessing = true
-                                progressCount = 0
-                                
-                                coroutineScope.launch {
-                                    for (song in songsToProcess) {
-                                        progressText = "Embedding: ${song.title}"
-                                        try {
-                                            context.symphony.semanticSearch.embedSongLocal(song)
-                                        } catch (e: Exception) {
-                                            e.printStackTrace()
-                                        }
-                                        progressCount++
-                                    }
-                                    
-                                    isProcessing = false
-                                    selectedSongs = emptySet()
-                                    snackbarHostState.showSnackbar("Finished indexing!")
-                                }
-                            }
-                        ) {
-                            Icon(Icons.Filled.AutoAwesome, "Index Selected")
-                        }
                     }
                 },
                 colors = TopAppBarDefaults.centerAlignedTopAppBarColors(
                     containerColor = Color.Transparent
                 )
             )
+        },
+        floatingActionButton = {
+            if (!indexingState.isActive && selectedSongs.isNotEmpty()) {
+                ExtendedFloatingActionButton(
+                    onClick = {
+                        val songsToProcess = unembeddedSongs.filter { selectedSongs.contains(it.id) }
+                        context.symphony.semanticSearch.startIndexing(songsToProcess)
+                        selectedSongs = emptySet()
+                    },
+                    icon = { Icon(Icons.Filled.AutoAwesome, null) },
+                    text = { Text("Index ${selectedSongs.size} songs") },
+                )
+            }
         }
     ) { contentPadding ->
         LazyColumn(
             modifier = Modifier.padding(contentPadding),
-            contentPadding = PaddingValues(bottom = 80.dp)
+            contentPadding = PaddingValues(bottom = 96.dp)
         ) {
+            // کارت پیشرفت غیرمسدودکننده
+            if (indexingState.isActive) {
+                item {
+                    IndexingProgressCard(
+                        state = indexingState,
+                        onCancel = { context.symphony.semanticSearch.cancelIndexing() },
+                    )
+                }
+            }
+
             item {
                 Row(
                     modifier = Modifier
@@ -151,12 +131,10 @@ fun IndexSongsSettingsView(context: ViewContext) {
                         style = MaterialTheme.typography.bodyMedium
                     )
                     TextButton(
+                        enabled = !indexingState.isActive,
                         onClick = {
-                            if (selectedSongs.size == unembeddedSongs.size) {
-                                selectedSongs = emptySet()
-                            } else {
-                                selectedSongs = unembeddedSongs.map { it.id }.toSet()
-                            }
+                            selectedSongs = if (selectedSongs.size == unembeddedSongs.size) emptySet()
+                            else unembeddedSongs.map { it.id }.toSet()
                         }
                     ) {
                         Text(
@@ -173,12 +151,10 @@ fun IndexSongsSettingsView(context: ViewContext) {
                         .fillMaxWidth()
                         .toggleable(
                             value = isSelected,
+                            enabled = !indexingState.isActive,
                             onValueChange = { checked ->
-                                selectedSongs = if (checked) {
-                                    selectedSongs + song.id
-                                } else {
-                                    selectedSongs - song.id
-                                }
+                                selectedSongs = if (checked) selectedSongs + song.id
+                                else selectedSongs - song.id
                             }
                         )
                         .padding(horizontal = 10.dp, vertical = 2.dp),
@@ -187,6 +163,7 @@ fun IndexSongsSettingsView(context: ViewContext) {
                     Checkbox(
                         checked = isSelected,
                         onCheckedChange = null,
+                        enabled = !indexingState.isActive,
                         modifier = Modifier.padding(end = 12.dp)
                     )
                     Box(modifier = Modifier.weight(1f)) {
@@ -195,15 +172,80 @@ fun IndexSongsSettingsView(context: ViewContext) {
                             song = song,
                             disableHeartIcon = true,
                             onClick = {
-                                selectedSongs = if (isSelected) {
-                                    selectedSongs - song.id
-                                } else {
-                                    selectedSongs + song.id
-                                }
+                                if (indexingState.isActive) return@SongCard
+                                selectedSongs = if (isSelected) selectedSongs - song.id
+                                else selectedSongs + song.id
                             }
                         )
                     }
                 }
+            }
+        }
+    }
+}
+
+@Composable
+private fun IndexingProgressCard(
+    state: IndexingState,
+    onCancel: () -> Unit,
+) {
+    Card(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 16.dp, vertical = 8.dp)
+    ) {
+        Column(modifier = Modifier.padding(16.dp)) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    "Indexing ${state.current} / ${state.total}",
+                    style = MaterialTheme.typography.titleMedium
+                )
+                IconButton(onClick = onCancel) {
+                    Icon(Icons.Filled.Close, "Cancel")
+                }
+            }
+            Spacer(Modifier.height(8.dp))
+            LinearProgressIndicator(
+                progress = {
+                    if (state.total > 0) state.current.toFloat() / state.total else 0f
+                },
+                modifier = Modifier.fillMaxWidth(),
+            )
+            Spacer(Modifier.height(8.dp))
+            Text(
+                state.currentTitle,
+                style = MaterialTheme.typography.bodySmall,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
+            // تخمین زمان باقیمانده
+            if (state.current > 0) {
+                val elapsed = System.currentTimeMillis() - state.startedAt
+                val avgPerSong = elapsed / state.current
+                val remainingMin = (avgPerSong * (state.total - state.current)) / 60000
+                Text(
+                    if (remainingMin < 1) "Less than a minute left"
+                    else "About $remainingMin min left",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+            Spacer(Modifier.height(4.dp))
+            Text(
+                "You can leave this screen — indexing continues in background.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+            if (state.failedCount > 0) {
+                Text(
+                    "${state.failedCount} failed so far",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.error
+                )
             }
         }
     }

@@ -16,11 +16,30 @@ import androidx.lifecycle.viewModelScope
 import io.github.zyrouge.symphony.services.search.ml.ModelManager
 import io.github.zyrouge.symphony.services.search.data.TrackJson
 import kotlinx.serialization.json.Json
-import java.io.File
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.ensureActive
+import kotlinx.coroutines.flow.update
+import io.github.zyrouge.symphony.services.groove.Song
+
+data class IndexingState(
+    val isActive: Boolean = false,
+    val current: Int = 0,
+    val total: Int = 0,
+    val currentTitle: String = "",
+    val failedCount: Int = 0,
+    val failedSongIds: List<String> = emptyList(),
+    val startedAt: Long = 0L,
+)
 
 class SemanticSearchEngine(val symphony: Symphony) : Symphony.Hooks {
     private val _isReady = MutableStateFlow(false)
     val isReady = _isReady.asStateFlow()
+
+    private val _indexingState = MutableStateFlow(IndexingState())
+    val indexingState = _indexingState.asStateFlow()
+
+    private var indexingJob: Job? = null
 
     var boxStore: BoxStore? = null
         private set
@@ -201,6 +220,42 @@ class SemanticSearchEngine(val symphony: Symphony) : Symphony.Hooks {
                 Result.failure(e)
             }
         }
+    }
+
+    fun startIndexing(songs: List<Song>) {
+        if (_indexingState.value.isActive || songs.isEmpty()) return
+
+        indexingJob = symphony.viewModelScope.launch(Dispatchers.Default) {
+            _indexingState.value = IndexingState(
+                isActive = true,
+                total = songs.size,
+                startedAt = System.currentTimeMillis(),
+            )
+            val failed = mutableListOf<String>()
+            try {
+                for (song in songs) {
+                    ensureActive() // نقطهی cancel امن
+                    _indexingState.update { it.copy(currentTitle = song.title) }
+                    val result = embedSongLocal(song)
+                    if (result.isFailure) failed.add(song.id)
+                    _indexingState.update {
+                        it.copy(
+                            current = it.current + 1,
+                            failedCount = failed.size,
+                            failedSongIds = failed.toList(),
+                        )
+                    }
+                }
+            } finally {
+                // چه تموم بشه چه cancel، از حالت active خارج میشیم
+                _indexingState.update { it.copy(isActive = false, currentTitle = "") }
+            }
+        }
+    }
+
+    fun cancelIndexing() {
+        indexingJob?.cancel()
+        indexingJob = null
     }
 
     suspend fun search(query: String, limit: Int = 10): List<String> {
