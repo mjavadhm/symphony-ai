@@ -2,10 +2,18 @@ package io.github.zyrouge.symphony.ui.components
 
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.togetherWith
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.size
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.MusicNote
+import androidx.compose.material3.Icon
+import androidx.compose.material3.LocalContentColor
 import androidx.compose.material3.Text
+import androidx.compose.ui.unit.dp
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -117,10 +125,22 @@ fun LyricsText(
                 modifier = Modifier.fillMaxSize(),
                 contentAlignment = Alignment.Center,
             ) {
-                Text(
-                    if (targetLyricsState == 1) context.symphony.t.Loading
-                    else context.symphony.t.NoLyrics
-                )
+                Column(
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.spacedBy(12.dp),
+                ) {
+                    Icon(
+                        Icons.Filled.MusicNote,
+                        null,
+                        tint = LocalContentColor.current.copy(alpha = 0.4f),
+                        modifier = Modifier.size(48.dp),
+                    )
+                    Text(
+                        if (targetLyricsState == 1) context.symphony.t.Loading
+                        else context.symphony.t.NoLyrics,
+                        color = LocalContentColor.current.copy(alpha = 0.6f),
+                    )
+                }
             }
         }
     }

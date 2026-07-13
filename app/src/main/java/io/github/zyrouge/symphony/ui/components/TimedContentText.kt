@@ -1,7 +1,9 @@
 package io.github.zyrouge.symphony.ui.components
 
 import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.ui.draw.blur
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.PaddingValues
@@ -49,6 +51,7 @@ data class TimedContentTextStyle(
     val active: TextStyle,
     val inactive: TextStyle,
     val spacing: Dp,
+    val inactiveBlur: Dp = 0.dp,
 ) {
     companion object {
         @Composable
@@ -141,12 +144,21 @@ fun TimedContentText(
                     else -> style.inactive
                 },
             )
+            // بلور فقط برای لیریک syncشده و خطوط غیر از خط فعال
+            val lineBlur by animateDpAsState(
+                targetValue = when {
+                    content.isSynced && !active -> style.inactiveBlur
+                    else -> 0.dp
+                },
+                label = "timed-content-line-blur",
+            )
 
             Text(
                 x.second,
                 modifier = Modifier
                     .animateItem()
                     .fillMaxWidth()
+                    .blur(lineBlur)
                     .pointerInput(Unit) {
                         detectTapGestures { _ ->
                             if (!content.isSynced) {
