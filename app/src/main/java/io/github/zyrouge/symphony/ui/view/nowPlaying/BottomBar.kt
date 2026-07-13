@@ -13,19 +13,15 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.Sort
 import androidx.compose.material.icons.automirrored.outlined.Article
 import androidx.compose.material.icons.filled.GraphicEq
 import androidx.compose.material.icons.filled.MotionPhotosPaused
-import androidx.compose.material.icons.filled.Repeat
-import androidx.compose.material.icons.filled.RepeatOne
-import androidx.compose.material.icons.filled.Shuffle
-import androidx.compose.material.icons.outlined.MoreHoriz
 import androidx.compose.material.icons.outlined.Speed
 import androidx.compose.material.icons.outlined.Timer
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -36,7 +32,6 @@ import androidx.compose.material3.LocalContentColor
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
@@ -47,10 +42,10 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-import io.github.zyrouge.symphony.services.radio.RadioQueue
 import io.github.zyrouge.symphony.ui.components.LocalNowPlayingAccent
 import io.github.zyrouge.symphony.ui.helpers.ViewContext
 import io.github.zyrouge.symphony.ui.view.LyricsViewRoute
@@ -62,61 +57,29 @@ import io.github.zyrouge.symphony.ui.view.QueueViewRoute
 import io.github.zyrouge.symphony.utils.Logger
 import kotlinx.coroutines.launch
 
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun NowPlayingBodyBottomBar(
     context: ViewContext,
     data: NowPlayingData,
     states: NowPlayingStates,
 ) {
-    val coroutineScope = rememberCoroutineScope()
-    val equalizerActivity = rememberLauncherForActivityResult(
-        context.symphony.radio.session.createEqualizerActivityContract()
-    ) {}
-
-    val sleepTimer by context.symphony.radio.observatory.sleepTimer.collectAsState()
-    var showSleepTimerDialog by remember { mutableStateOf(false) }
-    var showSpeedDialog by remember { mutableStateOf(false) }
-    var showPitchDialog by remember { mutableStateOf(false) }
-    var showExtraOptions by remember { mutableStateOf(false) }
-
     data.run {
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(
-                    start = 8.dp,
-                    end = 8.dp,
-                    bottom = 4.dp,
-                ),
+                .padding(top = 4.dp, bottom = 10.dp),
+            horizontalArrangement = Arrangement.spacedBy(40.dp, Alignment.CenterHorizontally),
             verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
         ) {
-            TextButton(
-                onClick = {
-                    context.navController.navigate(QueueViewRoute)
-                }
-            ) {
-                Icon(
-                    Icons.AutoMirrored.Filled.Sort,
-                    null,
-                    modifier = Modifier.size(20.dp),
-                )
-                Spacer(modifier = Modifier.width(8.dp))
-                Text(
-                    context.symphony.t.PlayingXofY(
-                        (currentSongIndex + 1).toString(),
-                        queueSize.toString(),
-                    ),
-                    overflow = TextOverflow.Ellipsis,
-                )
-            }
-            Spacer(modifier = Modifier.weight(1f))
+            // لیریک — toggle با accent
             states.showLyrics.let { showLyricsState ->
                 val showLyrics by showLyricsState.collectAsState()
 
                 IconButton(
-                    modifier = Modifier.background(Color.White.copy(alpha = 0.12f), CircleShape),
+                    modifier = Modifier.background(
+                        Color.White.copy(alpha = if (showLyrics) 0.25f else 0.12f),
+                        CircleShape,
+                    ),
                     onClick = {
                         when (lyricsLayout) {
                             NowPlayingLyricsLayout.ReplaceArtwork -> {
@@ -141,94 +104,56 @@ fun NowPlayingBodyBottomBar(
                     )
                 }
             }
-            IconButton(
-                modifier = Modifier.background(Color.White.copy(alpha = 0.12f), CircleShape),
-                onClick = {
-                    context.symphony.radio.queue.toggleLoopMode()
-                }
+            // صف پخش — پیل با شمارنده
+            Row(
+                modifier = Modifier
+                    .clip(RoundedCornerShape(24.dp))
+                    .background(Color.White.copy(alpha = 0.12f))
+                    .clickable {
+                        context.navController.navigate(QueueViewRoute)
+                    }
+                    .padding(horizontal = 16.dp, vertical = 12.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
             ) {
                 Icon(
-                    when (currentLoopMode) {
-                        RadioQueue.LoopMode.Song -> Icons.Filled.RepeatOne
-                        else -> Icons.Filled.Repeat
-                    },
+                    Icons.AutoMirrored.Filled.Sort,
                     null,
-                    tint = when (currentLoopMode) {
-                        RadioQueue.LoopMode.None -> LocalContentColor.current
-                        else -> LocalNowPlayingAccent.current
-                    }
+                    modifier = Modifier.size(18.dp),
                 )
-            }
-            IconButton(
-                modifier = Modifier.background(Color.White.copy(alpha = 0.12f), CircleShape),
-                onClick = {
-                    context.symphony.radio.queue.toggleShuffleMode()
-                }
-            ) {
-                Icon(
-                    Icons.Filled.Shuffle,
-                    null,
-                    tint = when {
-                        currentShuffleMode -> LocalNowPlayingAccent.current
-                        else -> LocalContentColor.current
-                    },
-                )
-            }
-            IconButton(
-                modifier = Modifier.background(Color.White.copy(alpha = 0.12f), CircleShape),
-                onClick = {
-                    showExtraOptions = !showExtraOptions
-                }
-            ) {
-                Icon(Icons.Outlined.MoreHoriz, null)
-            }
-        }
-
-        if (showSleepTimerDialog) {
-            sleepTimer?.let {
-                NowPlayingSleepTimerDialog(
-                    context,
-                    sleepTimer = it,
-                    onDismissRequest = {
-                        showSleepTimerDialog = false
-                    }
-                )
-            } ?: run {
-                NowPlayingSleepTimerSetDialog(
-                    context,
-                    onDismissRequest = {
-                        showSleepTimerDialog = false
-                    }
+                Text(
+                    "${currentSongIndex + 1}/$queueSize",
+                    style = MaterialTheme.typography.labelLarge
+                        .copy(fontWeight = FontWeight.Bold),
                 )
             }
         }
+    }
+}
 
-        if (showSpeedDialog) {
-            NowPlayingSpeedDialog(
-                context,
-                currentSpeed = data.currentSpeed,
-                persistedSpeed = data.persistedSpeed,
-                onDismissRequest = {
-                    showSpeedDialog = false
-                }
-            )
-        }
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun NowPlayingExtraOptions(
+    context: ViewContext,
+    data: NowPlayingData,
+    visible: Boolean,
+    onDismissRequest: () -> Unit,
+) {
+    val coroutineScope = rememberCoroutineScope()
+    val equalizerActivity = rememberLauncherForActivityResult(
+        context.symphony.radio.session.createEqualizerActivityContract()
+    ) {}
 
-        if (showPitchDialog) {
-            NowPlayingPitchDialog(
-                context,
-                currentPitch = data.currentPitch,
-                persistedPitch = data.persistedPitch,
-                onDismissRequest = {
-                    showPitchDialog = false
-                }
-            )
-        }
+    val sleepTimer by context.symphony.radio.observatory.sleepTimer.collectAsState()
+    var showSleepTimerDialog by remember { mutableStateOf(false) }
+    var showSpeedDialog by remember { mutableStateOf(false) }
+    var showPitchDialog by remember { mutableStateOf(false) }
 
-        if (showExtraOptions) {
+    data.run {
+        if (visible) {
             val sheetState = rememberModalBottomSheetState()
             val closeBottomSheet = {
-                showExtraOptions = false
+                onDismissRequest()
                 coroutineScope.launch {
                     sheetState.hide()
                 }
@@ -237,9 +162,7 @@ fun NowPlayingBodyBottomBar(
             ModalBottomSheet(
                 sheetState = sheetState,
                 containerColor = MaterialTheme.colorScheme.surface,
-                onDismissRequest = {
-                    showExtraOptions = false
-                },
+                onDismissRequest = onDismissRequest,
             ) {
                 Column(modifier = Modifier.verticalScroll(rememberScrollState())) {
                     ListItem(
@@ -352,6 +275,47 @@ fun NowPlayingBodyBottomBar(
                     Spacer(modifier = Modifier.height(8.dp))
                 }
             }
+        }
+
+        if (showSleepTimerDialog) {
+            sleepTimer?.let {
+                NowPlayingSleepTimerDialog(
+                    context,
+                    sleepTimer = it,
+                    onDismissRequest = {
+                        showSleepTimerDialog = false
+                    }
+                )
+            } ?: run {
+                NowPlayingSleepTimerSetDialog(
+                    context,
+                    onDismissRequest = {
+                        showSleepTimerDialog = false
+                    }
+                )
+            }
+        }
+
+        if (showSpeedDialog) {
+            NowPlayingSpeedDialog(
+                context,
+                currentSpeed = data.currentSpeed,
+                persistedSpeed = data.persistedSpeed,
+                onDismissRequest = {
+                    showSpeedDialog = false
+                }
+            )
+        }
+
+        if (showPitchDialog) {
+            NowPlayingPitchDialog(
+                context,
+                currentPitch = data.currentPitch,
+                persistedPitch = data.persistedPitch,
+                onDismissRequest = {
+                    showPitchDialog = false
+                }
+            )
         }
     }
 }

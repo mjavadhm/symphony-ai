@@ -18,12 +18,20 @@ import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.outlined.MoreHoriz
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.LocalContentColor
 import androidx.compose.material3.LocalTextStyle
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -57,6 +65,7 @@ fun NowPlayingBodyCover(
     orientation: ScreenOrientation,
 ) {
     val showLyrics by states.showLyrics.collectAsState()
+    var showExtraOptions by remember { mutableStateOf(false) }
 
     Box(modifier = Modifier.padding(8.dp, 0.dp)) {
         AnimatedContent(
@@ -72,10 +81,21 @@ fun NowPlayingBodyCover(
             if (targetStateShowLyrics) {
                 NowPlayingBodyCoverLyrics(context, orientation)
             } else {
-                NowPlayingBodyCoverArtwork(context, data)
+                NowPlayingBodyCoverArtwork(
+                    context,
+                    data = data,
+                    onShowExtraOptions = { showExtraOptions = true },
+                )
             }
         }
     }
+
+    NowPlayingExtraOptions(
+        context,
+        data = data,
+        visible = showExtraOptions,
+        onDismissRequest = { showExtraOptions = false },
+    )
 }
 
 @Composable
@@ -114,11 +134,14 @@ private fun NowPlayingBodyCoverLyrics(context: ViewContext, orientation: ScreenO
 }
 
 @Composable
-private fun NowPlayingBodyCoverArtwork(context: ViewContext, data: NowPlayingData) {
+private fun NowPlayingBodyCoverArtwork(
+    context: ViewContext,
+    data: NowPlayingData,
+    onShowExtraOptions: () -> Unit,
+) {
     BoxWithConstraints {
         val dimension = min(this@BoxWithConstraints.maxHeight, this@BoxWithConstraints.maxWidth)
 
-        // امضای اپل موزیک: کاور موقع pause کوچیک میشه و با spring برمیگرده
         val playScale by animateFloatAsState(
             targetValue = if (data.isPlaying) 1f else 0.85f,
             animationSpec = spring(
@@ -139,49 +162,70 @@ private fun NowPlayingBodyCoverArtwork(context: ViewContext, data: NowPlayingDat
                     )
             },
         ) { targetStateSong ->
-            AsyncImage(
-                targetStateSong
-                    .createArtworkImageRequest(context.symphony)
-                    .build(),
-                null,
-                contentScale = ContentScale.Crop,
-                filterQuality = FilterQuality.High,
+            Box(
                 modifier = Modifier
                     .fillMaxSize()
                     .graphicsLayer {
                         scaleX = playScale
                         scaleY = playScale
                     }
-                    .shadow(
-                        elevation = 24.dp,
-                        shape = RoundedCornerShape(coverCornerRadius),
-                        ambientColor = Color.Black.copy(alpha = 0.7f),
-                        spotColor = Color.Black.copy(alpha = 0.7f),
-                    )
-                    .clip(RoundedCornerShape(coverCornerRadius))
-                    .swipeable(
-                        minimumDragAmount = 100f,
-                        onSwipeLeft = {
-                            if (context.symphony.radio.canJumpToNext()) {
-                                context.symphony.radio.jumpToNext()
-                            }
-                        },
-                        onSwipeRight = {
-                            if (context.symphony.radio.canJumpToPrevious()) {
-                                context.symphony.radio.jumpToPrevious()
-                            }
-                        },
-                    )
-                    .pointerInput(Unit) {
-                        detectTapGestures { _ ->
-                            context.symphony.groove.album
-                                .getIdFromSong(data.song)
-                                ?.let {
-                                    context.navController.navigate(AlbumViewRoute(it))
+            ) {
+                AsyncImage(
+                    targetStateSong
+                        .createArtworkImageRequest(context.symphony)
+                        .build(),
+                    null,
+                    contentScale = ContentScale.Crop,
+                    filterQuality = FilterQuality.High,
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .shadow(
+                            elevation = 24.dp,
+                            shape = RoundedCornerShape(coverCornerRadius),
+                            ambientColor = Color.Black.copy(alpha = 0.7f),
+                            spotColor = Color.Black.copy(alpha = 0.7f),
+                        )
+                        .clip(RoundedCornerShape(coverCornerRadius))
+                        .swipeable(
+                            minimumDragAmount = 100f,
+                            onSwipeLeft = {
+                                if (context.symphony.radio.canJumpToNext()) {
+                                    context.symphony.radio.jumpToNext()
                                 }
+                            },
+                            onSwipeRight = {
+                                if (context.symphony.radio.canJumpToPrevious()) {
+                                    context.symphony.radio.jumpToPrevious()
+                                }
+                            },
+                        )
+                        .pointerInput(Unit) {
+                            detectTapGestures { _ ->
+                                context.symphony.groove.album
+                                    .getIdFromSong(data.song)
+                                    ?.let {
+                                        context.navController.navigate(AlbumViewRoute(it))
+                                    }
+                            }
                         }
-                    }
-            )
+                )
+                // سهنقطه: تنظیمات پخش (اکولایزر، سرعت، تایمر...)
+                IconButton(
+                    modifier = Modifier
+                        .align(Alignment.BottomStart)
+                        .padding(10.dp)
+                        .size(36.dp)
+                        .background(Color.Black.copy(alpha = 0.35f), CircleShape),
+                    onClick = onShowExtraOptions,
+                ) {
+                    Icon(
+                        Icons.Outlined.MoreHoriz,
+                        null,
+                        tint = Color.White,
+                        modifier = Modifier.size(20.dp),
+                    )
+                }
+            }
         }
     }
 }
