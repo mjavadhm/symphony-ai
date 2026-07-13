@@ -58,7 +58,7 @@ fun NowPlayingBodyCover(
 ) {
     val showLyrics by states.showLyrics.collectAsState()
 
-    Box(modifier = Modifier.padding(defaultHorizontalPadding, 0.dp)) {
+    Box(modifier = Modifier.padding(8.dp, 0.dp)) {
         AnimatedContent(
             label = "now-playing-body-cover",
             targetState = showLyrics,

@@ -180,6 +180,8 @@ fun NowPlayingBodyContent(context: ViewContext, data: NowPlayingData) {
                     }
                 }
             }
+            Spacer(modifier = Modifier.height(defaultHorizontalPadding))
+            NowPlayingSeekBar(context)
             Spacer(modifier = Modifier.height(defaultHorizontalPadding + 8.dp))
             when (controlsLayout) {
                 NowPlayingControlsLayout.CompactLeft -> NowPlayingCompactControls(
@@ -198,8 +200,6 @@ fun NowPlayingBodyContent(context: ViewContext, data: NowPlayingData) {
                     data = data,
                 )
             }
-            Spacer(modifier = Modifier.height(defaultHorizontalPadding + 8.dp))
-            NowPlayingSeekBar(context)
             Spacer(modifier = Modifier.height(defaultHorizontalPadding))
         }
     }
@@ -261,15 +261,9 @@ fun NowPlayingTraditionalControls(context: ViewContext, data: NowPlayingData) {
         modifier = Modifier
             .padding(defaultHorizontalPadding, 0.dp)
             .fillMaxWidth(),
-        horizontalArrangement = Arrangement.SpaceAround,
+        horizontalArrangement = Arrangement.spacedBy(24.dp, Alignment.CenterHorizontally),
+        verticalAlignment = Alignment.CenterVertically,
     ) {
-        NowPlayingSkipPreviousButton(
-            context,
-            data = data,
-            style = NowPlayingControlButtonStyle(
-                color = NowPlayingControlButtonColor.Transparent,
-            ),
-        )
         if (data.enableSeekControls) {
             NowPlayingFastRewindButton(
                 context,
@@ -279,12 +273,28 @@ fun NowPlayingTraditionalControls(context: ViewContext, data: NowPlayingData) {
                 ),
             )
         }
+        NowPlayingSkipPreviousButton(
+            context,
+            data = data,
+            style = NowPlayingControlButtonStyle(
+                color = NowPlayingControlButtonColor.Transparent,
+                size = NowPlayingControlButtonSize.Medium,
+            ),
+        )
         NowPlayingPlayPauseButton(
             context,
             data = data,
             style = NowPlayingControlButtonStyle(
                 color = NowPlayingControlButtonColor.Primary,
                 size = NowPlayingControlButtonSize.Large,
+            ),
+        )
+        NowPlayingSkipNextButton(
+            context,
+            data = data,
+            style = NowPlayingControlButtonStyle(
+                color = NowPlayingControlButtonColor.Transparent,
+                size = NowPlayingControlButtonSize.Medium,
             ),
         )
         if (data.enableSeekControls) {
@@ -296,13 +306,6 @@ fun NowPlayingTraditionalControls(context: ViewContext, data: NowPlayingData) {
                 ),
             )
         }
-        NowPlayingSkipNextButton(
-            context,
-            data = data,
-            style = NowPlayingControlButtonStyle(
-                color = NowPlayingControlButtonColor.Transparent,
-            ),
-        )
     }
 }
 
@@ -578,6 +581,7 @@ private enum class NowPlayingControlButtonColor {
 
 private enum class NowPlayingControlButtonSize {
     Default,
+    Medium,
     Large,
 }
 
@@ -612,10 +616,12 @@ private fun NowPlayingControlButton(
     }
     val buttonSize = when (style.size) {
         NowPlayingControlButtonSize.Default -> 48.dp
+        NowPlayingControlButtonSize.Medium -> 60.dp
         NowPlayingControlButtonSize.Large -> 72.dp
     }
     val iconSize = when (style.size) {
         NowPlayingControlButtonSize.Default -> 26.dp
+        NowPlayingControlButtonSize.Medium -> 36.dp
         NowPlayingControlButtonSize.Large -> 38.dp
     }
 
