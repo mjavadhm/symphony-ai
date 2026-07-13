@@ -14,6 +14,7 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import dev.chrisbanes.haze.HazeState
 import dev.chrisbanes.haze.HazeStyle
+import dev.chrisbanes.haze.HazeTint
 import dev.chrisbanes.haze.hazeEffect
 
 /**
@@ -44,7 +45,7 @@ fun GlassSurface(
                 state = hazeState,
                 style = HazeStyle(
                     backgroundColor = surface,
-                    tint = surface.copy(alpha = tintAlpha),
+                    tint = HazeTint(surface.copy(alpha = tintAlpha)),
                     blurRadius = blurRadius,
                 ),
             )
