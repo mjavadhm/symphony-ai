@@ -19,6 +19,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.Sort
+import androidx.compose.material.icons.filled.MoreHoriz
 import androidx.compose.material.icons.automirrored.outlined.Article
 import androidx.compose.material.icons.filled.GraphicEq
 import androidx.compose.material.icons.filled.MotionPhotosPaused
@@ -63,15 +64,50 @@ fun NowPlayingBodyBottomBar(
     data: NowPlayingData,
     states: NowPlayingStates,
 ) {
+    var showExtraOptions by remember { mutableStateOf(false) }
+
     data.run {
         Row(
             modifier = Modifier
                 .fillMaxWidth()
                 .padding(top = 4.dp, bottom = 10.dp),
-            horizontalArrangement = Arrangement.spacedBy(40.dp, Alignment.CenterHorizontally),
+            horizontalArrangement = Arrangement.spacedBy(28.dp, Alignment.CenterHorizontally),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            // لیریک — toggle با accent
+            // صف پخش — چپ
+            Row(
+                modifier = Modifier
+                    .clip(RoundedCornerShape(24.dp))
+                    .background(Color.White.copy(alpha = 0.12f))
+                    .clickable {
+                        context.navController.navigate(QueueViewRoute)
+                    }
+                    .padding(horizontal = 16.dp, vertical = 12.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                Icon(
+                    Icons.AutoMirrored.Filled.Sort,
+                    null,
+                    modifier = Modifier.size(18.dp),
+                )
+                Text(
+                    "${currentSongIndex + 1}/$queueSize",
+                    style = MaterialTheme.typography.labelLarge
+                        .copy(fontWeight = FontWeight.Bold),
+                )
+            }
+            // تنظیمات پخش — وسط
+            IconButton(
+                modifier = Modifier.background(
+                    Color.White.copy(alpha = 0.12f),
+                    CircleShape,
+                ),
+                onClick = { showExtraOptions = true },
+            ) {
+                Icon(Icons.Filled.MoreHoriz, null)
+            }
+            // لیریک — راست
             states.showLyrics.let { showLyricsState ->
                 val showLyrics by showLyricsState.collectAsState()
 
@@ -104,31 +140,15 @@ fun NowPlayingBodyBottomBar(
                     )
                 }
             }
-            // صف پخش — پیل با شمارنده
-            Row(
-                modifier = Modifier
-                    .clip(RoundedCornerShape(24.dp))
-                    .background(Color.White.copy(alpha = 0.12f))
-                    .clickable {
-                        context.navController.navigate(QueueViewRoute)
-                    }
-                    .padding(horizontal = 16.dp, vertical = 12.dp),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-            ) {
-                Icon(
-                    Icons.AutoMirrored.Filled.Sort,
-                    null,
-                    modifier = Modifier.size(18.dp),
-                )
-                Text(
-                    "${currentSongIndex + 1}/$queueSize",
-                    style = MaterialTheme.typography.labelLarge
-                        .copy(fontWeight = FontWeight.Bold),
-                )
-            }
         }
     }
+
+    NowPlayingExtraOptions(
+        context,
+        data = data,
+        visible = showExtraOptions,
+        onDismissRequest = { showExtraOptions = false },
+    )
 }
 
 @OptIn(ExperimentalMaterial3Api::class)

@@ -65,7 +65,6 @@ fun NowPlayingBodyCover(
     orientation: ScreenOrientation,
 ) {
     val showLyrics by states.showLyrics.collectAsState()
-    var showExtraOptions by remember { mutableStateOf(false) }
 
     Box(modifier = Modifier.padding(8.dp, 0.dp)) {
         AnimatedContent(
@@ -84,18 +83,11 @@ fun NowPlayingBodyCover(
                 NowPlayingBodyCoverArtwork(
                     context,
                     data = data,
-                    onShowExtraOptions = { showExtraOptions = true },
                 )
             }
         }
     }
 
-    NowPlayingExtraOptions(
-        context,
-        data = data,
-        visible = showExtraOptions,
-        onDismissRequest = { showExtraOptions = false },
-    )
 }
 
 @Composable
@@ -137,7 +129,6 @@ private fun NowPlayingBodyCoverLyrics(context: ViewContext, orientation: ScreenO
 private fun NowPlayingBodyCoverArtwork(
     context: ViewContext,
     data: NowPlayingData,
-    onShowExtraOptions: () -> Unit,
 ) {
     BoxWithConstraints {
         val dimension = min(this@BoxWithConstraints.maxHeight, this@BoxWithConstraints.maxWidth)
@@ -209,22 +200,6 @@ private fun NowPlayingBodyCoverArtwork(
                             }
                         }
                 )
-                // سهنقطه: تنظیمات پخش (اکولایزر، سرعت، تایمر...)
-                IconButton(
-                    modifier = Modifier
-                        .align(Alignment.BottomStart)
-                        .padding(10.dp)
-                        .size(36.dp)
-                        .background(Color.Black.copy(alpha = 0.35f), CircleShape),
-                    onClick = onShowExtraOptions,
-                ) {
-                    Icon(
-                        Icons.Outlined.MoreHoriz,
-                        null,
-                        tint = Color.White,
-                        modifier = Modifier.size(20.dp),
-                    )
-                }
             }
         }
     }
