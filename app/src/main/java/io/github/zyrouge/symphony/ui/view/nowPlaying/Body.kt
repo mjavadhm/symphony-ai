@@ -1,10 +1,11 @@
 package io.github.zyrouge.symphony.ui.view.nowPlaying
 
 import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.ExperimentalSharedTransitionApi
+import androidx.compose.animation.SharedTransitionLayout
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
-import androidx.compose.animation.scaleIn
 import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.basicMarquee
@@ -62,6 +63,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 
 internal val defaultHorizontalPadding = 20.dp
 
+@OptIn(ExperimentalSharedTransitionApi::class)
 @Composable
 fun NowPlayingBody(context: ViewContext, data: NowPlayingData) {
     val states = remember {
@@ -97,29 +99,46 @@ fun NowPlayingBody(context: ViewContext, data: NowPlayingData) {
                         Box(modifier = Modifier.padding(contentPadding)) {
                             when (orientation) {
                                 ScreenOrientation.PORTRAIT -> Column(modifier = Modifier.fillMaxSize()) {
-                                    AnimatedContent(
-                                        label = "now-playing-lyrics-mode",
+                                    SharedTransitionLayout(
                                         modifier = Modifier
                                             .weight(1f)
                                             .fillMaxWidth(),
-                                        targetState = showLyrics,
-                                        transitionSpec = {
-                                            (fadeIn(tween(350)) + scaleIn(
-                                                initialScale = 0.96f,
-                                                animationSpec = tween(350)
-                                            )).togetherWith(fadeOut(tween(200)))
-                                        },
-                                    ) { targetShowLyrics ->
-                                        when {
-                                            targetShowLyrics -> NowPlayingLyricsMode(context, data)
+                                    ) {
+                                        AnimatedContent(
+                                            label = "now-playing-lyrics-mode",
+                                            targetState = showLyrics,
+                                            transitionSpec = {
+                                                fadeIn(tween(400))
+                                                    .togetherWith(fadeOut(tween(250)))
+                                            },
+                                        ) { targetShowLyrics ->
+                                            // کاور بین دو حالت به صورت پیوسته morph میشه
+                                            val coverSharedModifier = Modifier.sharedElement(
+                                                rememberSharedContentState(key = "now-playing-cover"),
+                                                animatedVisibilityScope = this@AnimatedContent,
+                                            )
 
-                                            else -> Box(
-                                                modifier = Modifier
-                                                    .fillMaxSize()
-                                                    .padding(bottom = 20.dp),
-                                                contentAlignment = Alignment.Center,
-                                            ) {
-                                                NowPlayingBodyCover(context, data, states, orientation)
+                                            when {
+                                                targetShowLyrics -> NowPlayingLyricsMode(
+                                                    context,
+                                                    data,
+                                                    coverModifier = coverSharedModifier,
+                                                )
+
+                                                else -> Box(
+                                                    modifier = Modifier
+                                                        .fillMaxSize()
+                                                        .padding(bottom = 20.dp),
+                                                    contentAlignment = Alignment.Center,
+                                                ) {
+                                                    NowPlayingBodyCover(
+                                                        context,
+                                                        data,
+                                                        states,
+                                                        orientation,
+                                                        coverModifier = coverSharedModifier,
+                                                    )
+                                                }
                                             }
                                         }
                                     }
@@ -163,7 +182,11 @@ fun NowPlayingBody(context: ViewContext, data: NowPlayingData) {
 // حالت لیریک: کاور کوچیک بالا چپ + لیریک karaoke بدون پسزمینه
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
-private fun NowPlayingLyricsMode(context: ViewContext, data: NowPlayingData) {
+private fun NowPlayingLyricsMode(
+    context: ViewContext,
+    data: NowPlayingData,
+    coverModifier: Modifier = Modifier,
+) {
     Column(modifier = Modifier.fillMaxSize()) {
         // هدر: thumbnail + تایتل + خواننده
         Row(
@@ -177,7 +200,7 @@ private fun NowPlayingLyricsMode(context: ViewContext, data: NowPlayingData) {
                 data.song.createArtworkImageRequest(context.symphony).build(),
                 null,
                 contentScale = ContentScale.Crop,
-                modifier = Modifier
+                modifier = coverModifier
                     .size(52.dp)
                     .clip(RoundedCornerShape(10.dp)),
             )

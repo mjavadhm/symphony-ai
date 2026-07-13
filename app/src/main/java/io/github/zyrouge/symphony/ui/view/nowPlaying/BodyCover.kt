@@ -63,6 +63,7 @@ fun NowPlayingBodyCover(
     data: NowPlayingData,
     states: NowPlayingStates,
     orientation: ScreenOrientation,
+    coverModifier: Modifier = Modifier,
 ) {
     val showLyrics by states.showLyrics.collectAsState()
 
@@ -83,6 +84,7 @@ fun NowPlayingBodyCover(
                 NowPlayingBodyCoverArtwork(
                     context,
                     data = data,
+                    modifier = coverModifier,
                 )
             }
         }
@@ -129,6 +131,7 @@ private fun NowPlayingBodyCoverLyrics(context: ViewContext, orientation: ScreenO
 private fun NowPlayingBodyCoverArtwork(
     context: ViewContext,
     data: NowPlayingData,
+    modifier: Modifier = Modifier,
 ) {
     BoxWithConstraints {
         val dimension = min(this@BoxWithConstraints.maxHeight, this@BoxWithConstraints.maxWidth)
@@ -144,7 +147,7 @@ private fun NowPlayingBodyCoverArtwork(
 
         AnimatedContent(
             label = "now-playing-body-cover-artwork",
-            modifier = Modifier.size(dimension),
+            modifier = modifier.size(dimension),
             targetState = data.song,
             transitionSpec = {
                 (fadeIn(tween(400)) + scaleIn(initialScale = 1.05f, animationSpec = tween(400)))
