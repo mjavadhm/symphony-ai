@@ -81,7 +81,11 @@ import io.github.zyrouge.symphony.utils.DurationUtils
 
 @OptIn(ExperimentalLayoutApi::class, ExperimentalFoundationApi::class)
 @Composable
-fun NowPlayingBodyContent(context: ViewContext, data: NowPlayingData) {
+fun NowPlayingBodyContent(
+    context: ViewContext,
+    data: NowPlayingData,
+    showSongInfo: Boolean = true,
+) {
     val favoriteSongIds by context.symphony.groove.playlist.favorites.collectAsState()
     val isFavorite by remember(data) {
         derivedStateOf { favoriteSongIds.contains(data.song.id) }
@@ -89,7 +93,7 @@ fun NowPlayingBodyContent(context: ViewContext, data: NowPlayingData) {
 
     data.run {
         Column {
-            Row {
+            if (showSongInfo) Row {
                 AnimatedContent(
                     label = "now-playing-body-content",
                     modifier = Modifier.weight(1f),

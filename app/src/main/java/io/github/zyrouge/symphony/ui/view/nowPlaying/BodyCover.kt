@@ -77,7 +77,7 @@ fun NowPlayingBodyCover(
                 from togetherWith to
             },
         ) { targetStateShowLyrics ->
-            if (targetStateShowLyrics) {
+            if (targetStateShowLyrics && !orientation.isPortrait) {
                 NowPlayingBodyCoverLyrics(context, orientation)
             } else {
                 NowPlayingBodyCoverArtwork(
