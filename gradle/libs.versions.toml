@@ -16,6 +16,7 @@ okhttp3 = "4.12.0"
 room = "2.6.1"
 onnxruntime = "1.19.2"
 documentfile = "1.0.1"
+haze = "1.6.4"
 
 android-gradle-plugin = "8.7.3"
 kotlin-gradle-plugin = "2.1.0"
@@ -59,6 +60,7 @@ appcompat = { group = "androidx.appcompat", name = "appcompat", version.ref = "a
 material = { group = "com.google.android.material", name = "material", version.ref = "material" }
 onnxruntime-android = { group = "com.microsoft.onnxruntime", name = "onnxruntime-android", version.ref = "onnxruntime" }
 documentfile = { group = "androidx.documentfile", name = "documentfile", version.ref = "documentfile" }
+haze = { group = "dev.chrisbanes.haze", name = "haze", version.ref = "haze" }
 
 [plugins]
 android-app = { id = "com.android.application", version.ref = "android-gradle-plugin" }

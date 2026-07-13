@@ -32,6 +32,7 @@ import androidx.compose.ui.unit.dp
 import androidx.palette.graphics.Palette
 import coil.compose.AsyncImage
 import coil.imageLoader
+import dev.chrisbanes.haze.hazeSource
 import io.github.zyrouge.symphony.services.groove.Song
 import io.github.zyrouge.symphony.ui.helpers.ViewContext
 import kotlinx.coroutines.Dispatchers
@@ -155,6 +156,7 @@ fun HomeDynamicBackground(
         modifier = modifier
             .fillMaxSize()
             .background(surface)
+            .hazeSource(state = LocalHazeState.current)
     ) {
         AnimatedContent(
             label = "home-dynamic-background",

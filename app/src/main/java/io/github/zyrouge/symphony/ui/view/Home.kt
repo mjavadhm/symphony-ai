@@ -20,7 +20,11 @@ import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.border
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.QueueMusic
 import androidx.compose.material.icons.automirrored.outlined.QueueMusic
@@ -63,6 +67,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -82,6 +87,9 @@ import io.github.zyrouge.symphony.services.groove.Groove
 import io.github.zyrouge.symphony.ui.components.IntroductoryDialog
 import io.github.zyrouge.symphony.ui.components.NowPlayingBottomBar
 import io.github.zyrouge.symphony.ui.components.HomeDynamicBackground
+import io.github.zyrouge.symphony.ui.components.GlassSurface
+import io.github.zyrouge.symphony.ui.components.LocalHazeState
+import dev.chrisbanes.haze.HazeState
 import io.github.zyrouge.symphony.ui.components.TopAppBarMinimalTitle
 import io.github.zyrouge.symphony.ui.components.swipeable
 import io.github.zyrouge.symphony.ui.helpers.ScaleTransition
@@ -189,89 +197,22 @@ fun HomeView(context: ViewContext) {
     var showOptionsDropdown by remember { mutableStateOf(false) }
     var showTabsSheet by remember { mutableStateOf(false) }
 
+    val hazeState = remember { HazeState() }
+
+    CompositionLocalProvider(LocalHazeState provides hazeState) {
     Box(modifier = Modifier.fillMaxSize()) {
         HomeDynamicBackground(context)
         Scaffold(
             modifier = Modifier.fillMaxSize(),
             containerColor = Color.Transparent,
             topBar = {
-            CenterAlignedTopAppBar(
-                colors = TopAppBarDefaults.centerAlignedTopAppBarColors(
-                    containerColor = Color.Transparent
-                ),
-                navigationIcon = {
-                    IconButton(
-                        content = {
-                            Icon(Icons.Filled.Search, null)
-                        },
-                        onClick = {
-                            context.navController.navigate(SearchViewRoute(currentTab.kind?.name))
-                        }
-                    )
-                },
-                title = {
-                    Crossfade(
-                        label = "home-title",
-                        targetState = currentTab.label(context),
-                    ) {
-                        Box(
-                            modifier = Modifier.fillMaxSize(),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            TopAppBarMinimalTitle { Text(it) }
-                        }
-                    }
-                },
-                actions = {
-                    IconButton(
-                        content = {
-                            Icon(Icons.Filled.MoreVert, null)
-                            DropdownMenu(
-                                expanded = showOptionsDropdown,
-                                onDismissRequest = { showOptionsDropdown = false },
-                            ) {
-                                DropdownMenuItem(
-                                    leadingIcon = {
-                                        Icon(
-                                            Icons.Filled.Refresh,
-                                            context.symphony.t.Rescan,
-                                        )
-                                    },
-                                    text = {
-                                        Text(context.symphony.t.Rescan)
-                                    },
-                                    onClick = {
-                                        showOptionsDropdown = false
-                                        context.symphony.radio.stop()
-                                        context.symphony.groove.fetch(
-                                            Groove.FetchOptions(resetInMemoryCache = true),
-                                        )
-                                    }
-                                )
-                                DropdownMenuItem(
-                                    leadingIcon = {
-                                        Icon(
-                                            Icons.Filled.Settings,
-                                            context.symphony.t.Settings,
-                                        )
-                                    },
-                                    text = {
-                                        Text(context.symphony.t.Settings)
-                                    },
-                                    onClick = {
-                                        showOptionsDropdown = false
-                                        context.navController.navigate(SettingsViewRoute())
-                                    }
-                                )
-                            }
-                        },
-                        onClick = {
-                            showOptionsDropdown = !showOptionsDropdown
-                        }
-                    )
-                }
-            )
-        },
+                HomeTelegramTopBar(
+                    context = context,
+                    currentTab = currentTab,
+                    showOptionsDropdown = showOptionsDropdown,
+                    onShowOptionsDropdownChange = { showOptionsDropdown = it },
+                )
+            },
         content = { contentPadding ->
             AnimatedContent(
                 label = "home-content",
@@ -302,16 +243,10 @@ fun HomeView(context: ViewContext) {
         bottomBar = {
             Column {
                 NowPlayingBottomBar(context, false)
-                NavigationBar(
+                GlassSurface(
                     modifier = Modifier
                         .navigationBarsPadding()
                         .padding(start = 14.dp, end = 14.dp, bottom = 10.dp)
-                        .clip(RoundedCornerShape(30.dp))
-                        .border(
-                            1.dp,
-                            MaterialTheme.colorScheme.onSurface.copy(alpha = 0.12f),
-                            RoundedCornerShape(30.dp),
-                        )
                         .pointerInput(Unit) {
                             detectTapGestures {
                                 showTabsSheet = true
@@ -320,7 +255,10 @@ fun HomeView(context: ViewContext) {
                         .swipeable(onSwipeUp = {
                             showTabsSheet = true
                         }),
-                    containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.55f),
+                    shape = RoundedCornerShape(32.dp),
+                ) {
+                NavigationBar(
+                    containerColor = Color.Transparent,
                     windowInsets = WindowInsets(0, 0, 0, 0),
                 ) {
                     Spacer(modifier = Modifier.width(2.dp))
@@ -367,9 +305,11 @@ fun HomeView(context: ViewContext) {
                     }
                     Spacer(modifier = Modifier.width(2.dp))
                 }
+                }
             }
         }
     )
+    }
     }
 
     if (showTabsSheet) {
@@ -443,5 +383,99 @@ fun HomeView(context: ViewContext) {
                 context.symphony.settings.readIntroductoryMessage.setValue(true)
             },
         )
+    }
+}
+
+@Composable
+private fun HomeTelegramTopBar(
+    context: ViewContext,
+    currentTab: HomePage,
+    showOptionsDropdown: Boolean,
+    onShowOptionsDropdownChange: (Boolean) -> Unit,
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .statusBarsPadding()
+            .padding(horizontal = 14.dp, vertical = 10.dp),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        GlassSurface(
+            modifier = Modifier.size(44.dp),
+            shape = CircleShape,
+        ) {
+            IconButton(
+                modifier = Modifier.size(44.dp),
+                onClick = {
+                    context.navController.navigate(SearchViewRoute(currentTab.kind?.name))
+                }
+            ) {
+                Icon(Icons.Filled.Search, null)
+            }
+        }
+        Box(
+            modifier = Modifier.weight(1f),
+            contentAlignment = Alignment.Center,
+        ) {
+            GlassSurface(
+                modifier = Modifier.height(44.dp),
+                shape = RoundedCornerShape(50),
+            ) {
+                Crossfade(
+                    label = "home-title",
+                    targetState = currentTab.label(context),
+                ) {
+                    Text(
+                        it,
+                        style = MaterialTheme.typography.titleMedium,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.padding(horizontal = 20.dp),
+                    )
+                }
+            }
+        }
+        GlassSurface(
+            modifier = Modifier.size(44.dp),
+            shape = CircleShape,
+        ) {
+            Box {
+                IconButton(
+                    modifier = Modifier.size(44.dp),
+                    onClick = { onShowOptionsDropdownChange(!showOptionsDropdown) }
+                ) {
+                    Icon(Icons.Filled.MoreVert, null)
+                }
+                DropdownMenu(
+                    expanded = showOptionsDropdown,
+                    onDismissRequest = { onShowOptionsDropdownChange(false) },
+                ) {
+                    DropdownMenuItem(
+                        leadingIcon = {
+                            Icon(Icons.Filled.Refresh, context.symphony.t.Rescan)
+                        },
+                        text = { Text(context.symphony.t.Rescan) },
+                        onClick = {
+                            onShowOptionsDropdownChange(false)
+                            context.symphony.radio.stop()
+                            context.symphony.groove.fetch(
+                                Groove.FetchOptions(resetInMemoryCache = true),
+                            )
+                        }
+                    )
+                    DropdownMenuItem(
+                        leadingIcon = {
+                            Icon(Icons.Filled.Settings, context.symphony.t.Settings)
+                        },
+                        text = { Text(context.symphony.t.Settings) },
+                        onClick = {
+                            onShowOptionsDropdownChange(false)
+                            context.navController.navigate(SettingsViewRoute())
+                        }
+                    )
+                }
+            }
+        }
     }
 }

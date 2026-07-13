@@ -9,6 +9,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowDownward
 import androidx.compose.material.icons.filled.ArrowUpward
@@ -38,7 +39,7 @@ import androidx.compose.ui.unit.dp
 import io.github.zyrouge.symphony.ui.helpers.ViewContext
 
 @Composable
-fun <T : Enum<T>> MediaSortBar(
+fun <T> MediaSortBar(
     context: ViewContext,
     reverse: Boolean,
     onReverseChange: (Boolean) -> Unit,
@@ -53,7 +54,6 @@ fun <T : Enum<T>> MediaSortBar(
     val currentTextStyle = MaterialTheme.typography.bodySmall.run {
         copy(color = MaterialTheme.colorScheme.onSurface)
     }
-
     val iconButtonStyle = IconButtonDefaults.iconButtonColors(
         contentColor = currentTextStyle.color
     )
@@ -61,95 +61,94 @@ fun <T : Enum<T>> MediaSortBar(
     val textButtonStyle = ButtonDefaults.textButtonColors(
         contentColor = currentTextStyle.color
     )
+    val pillShape = RoundedCornerShape(50)
 
     Row(
         horizontalArrangement = Arrangement.SpaceBetween,
         verticalAlignment = Alignment.CenterVertically,
-        modifier = Modifier.fillMaxWidth()
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 14.dp, vertical = 6.dp)
     ) {
-        Row {
-            Spacer(modifier = Modifier.width(8.dp))
-            IconButton(
-                colors = iconButtonStyle,
-                onClick = { onReverseChange(!reverse) }
-            ) {
-                Icon(
-                    when {
-                        reverse -> Icons.Filled.ArrowDownward
-                        else -> Icons.Filled.ArrowUpward
-                    },
-                    null,
-                    modifier = iconModifier,
-                )
-            }
-            Box {
-                TextButton(
-                    colors = textButtonStyle,
-                    onClick = {
-                        showDropdown = !showDropdown
-                    }
-                ) {
-                    Text(sorts[sort]!!(context), style = currentTextStyle)
-                }
-                DropdownMenu(
-                    expanded = showDropdown,
-                    onDismissRequest = { showDropdown = false }
-                ) {
-                    sorts.map {
-                        val onClick = {
-                            showDropdown = false
-                            onSortChange(it.key)
-                        }
-
-                        DropdownMenuItem(
-                            contentPadding = MenuDefaults.DropdownMenuItemContentPadding.run {
-                                val horizontalPadding = calculateLeftPadding(LayoutDirection.Ltr)
-                                PaddingValues(
-                                    start = horizontalPadding.div(2),
-                                    end = horizontalPadding.times(4),
-                                )
-                            },
-                            leadingIcon = {
-                                RadioButton(
-                                    selected = it.key == sort,
-                                    onClick = onClick,
-                                )
-                            },
-                            text = {
-                                Text(it.value(context))
-                            },
-                            onClick = onClick,
-                        )
-                    }
-                }
-            }
-            onShowModifyLayout?.let {
-                IconButton(onClick = it) {
-                    Icon(Icons.Filled.GridView, null, modifier = iconModifier)
-                }
-            }
-        }
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            ProvideTextStyle(currentTextStyle) {
-                label()
-            }
-            onShufflePlay?.let {
+        GlassSurface(shape = pillShape) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Spacer(modifier = Modifier.width(4.dp))
                 IconButton(
-                    modifier = Modifier.padding(4.dp, 0.dp),
                     colors = iconButtonStyle,
-                    onClick = it,
+                    onClick = { onReverseChange(!reverse) }
                 ) {
                     Icon(
-                        Icons.Filled.Shuffle,
+                        when {
+                            reverse -> Icons.Filled.ArrowDownward
+                            else -> Icons.Filled.ArrowUpward
+                        },
                         null,
                         modifier = iconModifier,
                     )
                 }
+                Box {
+                    TextButton(
+                        colors = textButtonStyle,
+                        onClick = { showDropdown = !showDropdown }
+                    ) {
+                        Text(sorts[sort]!!(context), style = currentTextStyle)
+                    }
+                    DropdownMenu(
+                        expanded = showDropdown,
+                        onDismissRequest = { showDropdown = false }
+                    ) {
+                        sorts.map {
+                            val onClick = {
+                                showDropdown = false
+                                onSortChange(it.key)
+                            }
+                            DropdownMenuItem(
+                                contentPadding = MenuDefaults.DropdownMenuItemContentPadding.run {
+                                    val horizontalPadding = calculateLeftPadding(LayoutDirection.Ltr)
+                                    PaddingValues(
+                                        start = horizontalPadding.div(2),
+                                        end = horizontalPadding.times(4),
+                                    )
+                                },
+                                leadingIcon = {
+                                    RadioButton(
+                                        selected = it.key == sort,
+                                        onClick = onClick,
+                                    )
+                                },
+                                text = { Text(it.value(context)) },
+                                onClick = onClick,
+                            )
+                        }
+                    }
+                }
+                onShowModifyLayout?.let {
+                    IconButton(colors = iconButtonStyle, onClick = it) {
+                        Icon(Icons.Filled.GridView, null, modifier = iconModifier)
+                    }
+                }
+                Spacer(modifier = Modifier.width(4.dp))
             }
-            if (onShufflePlay == null) {
-                Spacer(modifier = Modifier.width(20.dp))
+        }
+        GlassSurface(shape = pillShape) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Spacer(modifier = Modifier.width(16.dp))
+                ProvideTextStyle(currentTextStyle) {
+                    label()
+                }
+                if (onShufflePlay != null) {
+                    IconButton(
+                        modifier = Modifier.padding(4.dp, 0.dp),
+                        colors = iconButtonStyle,
+                        onClick = onShufflePlay,
+                    ) {
+                        Icon(Icons.Filled.Shuffle, null, modifier = iconModifier)
+                    }
+                    Spacer(modifier = Modifier.width(4.dp))
+                } else {
+                    Spacer(modifier = Modifier.width(16.dp))
+                }
             }
         }
     }
 }
-

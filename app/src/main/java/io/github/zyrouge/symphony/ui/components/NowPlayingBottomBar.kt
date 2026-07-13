@@ -128,14 +128,8 @@ fun NowPlayingBottomBar(context: ViewContext, insetPadding: Boolean = true) {
             Column(
                 modifier = Modifier.padding(start = 14.dp, end = 14.dp, bottom = 10.dp),
             ) {
-                Box(
-                    modifier = Modifier
-                        .clip(RoundedCornerShape(26.dp))
-                        .border(
-                            1.dp,
-                            MaterialTheme.colorScheme.onSurface.copy(alpha = 0.12f),
-                            RoundedCornerShape(26.dp),
-                        ),
+                GlassSurface(
+                    shape = RoundedCornerShape(28.dp),
                 ) {
                 Column {
                 Box(
@@ -166,7 +160,7 @@ fun NowPlayingBottomBar(context: ViewContext, insetPadding: Boolean = true) {
                         ),
                     shape = RectangleShape,
                     colors = CardDefaults.elevatedCardColors(
-                        containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.6f),
+                        containerColor = Color.Transparent,
                     ),
                     elevation = CardDefaults.elevatedCardElevation(defaultElevation = 0.dp),
                     onClick = {

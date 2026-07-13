@@ -136,6 +136,7 @@ dependencies {
     implementation(libs.onnxruntime.android)
     implementation(libs.documentfile)
     implementation("androidx.palette:palette-ktx:1.0.0")
+    implementation(libs.haze)
 
     debugImplementation(libs.compose.ui.tooling)
     debugImplementation(libs.compose.ui.test.manifest)
