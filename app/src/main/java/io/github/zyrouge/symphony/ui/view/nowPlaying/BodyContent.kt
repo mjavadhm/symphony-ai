@@ -1,10 +1,23 @@
 package io.github.zyrouge.symphony.ui.view.nowPlaying
 
 import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.animateDpAsState
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.spring
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.scaleIn
+import androidx.compose.animation.scaleOut
 import androidx.compose.animation.togetherWith
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
+import androidx.compose.foundation.basicMarquee
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
@@ -45,12 +58,15 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.scale
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import io.github.zyrouge.symphony.ui.components.LocalNowPlayingAccent
 import io.github.zyrouge.symphony.ui.components.SongDropdownMenu
 import io.github.zyrouge.symphony.ui.helpers.FadeTransition
 import io.github.zyrouge.symphony.ui.helpers.ViewContext
@@ -59,7 +75,7 @@ import io.github.zyrouge.symphony.ui.view.NowPlayingControlsLayout
 import io.github.zyrouge.symphony.ui.view.NowPlayingData
 import io.github.zyrouge.symphony.utils.DurationUtils
 
-@OptIn(ExperimentalLayoutApi::class)
+@OptIn(ExperimentalLayoutApi::class, ExperimentalFoundationApi::class)
 @Composable
 fun NowPlayingBodyContent(context: ViewContext, data: NowPlayingData) {
     val favoriteSongIds by context.symphony.groove.playlist.favorites.collectAsState()
@@ -84,14 +100,17 @@ fun NowPlayingBodyContent(context: ViewContext, data: NowPlayingData) {
                             targetStateSong.title,
                             style = MaterialTheme.typography.headlineSmall
                                 .copy(fontWeight = FontWeight.Bold),
-                            maxLines = 3,
+                            maxLines = 1,
                             overflow = TextOverflow.Ellipsis,
+                            modifier = Modifier.basicMarquee(iterations = Int.MAX_VALUE),
                         )
                         if (targetStateSong.artists.isNotEmpty()) {
+                            val artistColor = LocalContentColor.current.copy(alpha = 0.7f)
                             FlowRow {
                                 targetStateSong.artists.forEachIndexed { i, it ->
                                     Text(
                                         it,
+                                        color = artistColor,
                                         maxLines = 2,
                                         overflow = TextOverflow.Ellipsis,
                                         modifier = Modifier.pointerInput(Unit) {
@@ -101,7 +120,7 @@ fun NowPlayingBodyContent(context: ViewContext, data: NowPlayingData) {
                                         },
                                     )
                                     if (i != targetStateSong.artists.size - 1) {
-                                        Text(", ")
+                                        Text(", ", color = artistColor)
                                     }
                                 }
                             }
@@ -135,7 +154,7 @@ fun NowPlayingBodyContent(context: ViewContext, data: NowPlayingData) {
                             isFavorite -> Icon(
                                 Icons.Filled.Favorite,
                                 null,
-                                tint = MaterialTheme.colorScheme.primary,
+                                tint = LocalNowPlayingAccent.current,
                             )
 
                             else -> Icon(Icons.Filled.FavoriteBorder, null)
@@ -264,7 +283,7 @@ fun NowPlayingTraditionalControls(context: ViewContext, data: NowPlayingData) {
             context,
             data = data,
             style = NowPlayingControlButtonStyle(
-                color = NowPlayingControlButtonColor.Surface,
+                color = NowPlayingControlButtonColor.Primary,
                 size = NowPlayingControlButtonSize.Large,
             ),
         )
@@ -336,13 +355,24 @@ private fun NowPlayingSeekBar(
     onSeekEnd: (Float) -> Unit,
     onSeekCancel: () -> Unit,
 ) {
-    val sliderHeight = 12.dp
-    val thumbSize = 12.dp
+    val accent = LocalNowPlayingAccent.current
+    val sliderHeight = 24.dp
+    val thumbSize = 14.dp
     val thumbSizeHalf = thumbSize.div(2)
-    val trackHeight = 4.dp
 
     var dragging by remember { mutableStateOf(false) }
     var dragRatio by remember { mutableFloatStateOf(0f) }
+
+    // سبک اپل موزیک: track موقع لمس قطور میشه، thumb فقط موقع درگ ظاهر میشه
+    val trackHeight by animateDpAsState(
+        targetValue = if (dragging) 8.dp else 4.dp,
+        animationSpec = spring(stiffness = Spring.StiffnessMediumLow),
+        label = "seekbar-track-height",
+    )
+    val thumbAlpha by animateFloatAsState(
+        targetValue = if (dragging) 1f else 0f,
+        label = "seekbar-thumb-alpha",
+    )
 
     BoxWithConstraints(
         modifier = Modifier
@@ -399,7 +429,7 @@ private fun NowPlayingSeekBar(
                 .height(trackHeight)
                 .fillMaxWidth()
                 .background(
-                    MaterialTheme.colorScheme.surfaceVariant,
+                    Color.White.copy(alpha = 0.25f),
                     RoundedCornerShape(thumbSizeHalf)
                 )
         ) {
@@ -408,7 +438,7 @@ private fun NowPlayingSeekBar(
                     .height(trackHeight)
                     .fillMaxWidth(if (dragging) dragRatio else ratio)
                     .background(
-                        MaterialTheme.colorScheme.primary,
+                        accent,
                         RoundedCornerShape(thumbSizeHalf)
                     )
             )
@@ -423,7 +453,8 @@ private fun NowPlayingSeekBar(
                             .times(if (dragging) dragRatio else ratio),
                         0.dp
                     )
-                    .background(MaterialTheme.colorScheme.primary, CircleShape)
+                    .graphicsLayer { alpha = thumbAlpha }
+                    .background(Color.White, CircleShape)
             )
         }
     }
@@ -561,29 +592,58 @@ private fun NowPlayingControlButton(
     icon: ImageVector,
     onClick: () -> Unit,
 ) {
+    // spring scale موقع لمس — مثل تلگرام
+    val interactionSource = remember { MutableInteractionSource() }
+    val isPressed by interactionSource.collectIsPressedAsState()
+    val pressScale by animateFloatAsState(
+        targetValue = if (isPressed) 0.85f else 1f,
+        animationSpec = spring(dampingRatio = Spring.DampingRatioMediumBouncy),
+        label = "control-press-scale",
+    )
+
     val backgroundColor = when (style.color) {
-        NowPlayingControlButtonColor.Primary -> MaterialTheme.colorScheme.primary
-        NowPlayingControlButtonColor.Surface -> MaterialTheme.colorScheme.surfaceVariant
+        NowPlayingControlButtonColor.Primary -> Color.White
+        NowPlayingControlButtonColor.Surface -> Color.White.copy(alpha = 0.15f)
         NowPlayingControlButtonColor.Transparent -> Color.Transparent
     }
     val contentColor = when (style.color) {
-        NowPlayingControlButtonColor.Primary -> MaterialTheme.colorScheme.onPrimary
+        NowPlayingControlButtonColor.Primary -> Color.Black.copy(alpha = 0.85f)
         else -> LocalContentColor.current
     }
+    val buttonSize = when (style.size) {
+        NowPlayingControlButtonSize.Default -> 48.dp
+        NowPlayingControlButtonSize.Large -> 72.dp
+    }
     val iconSize = when (style.size) {
-        NowPlayingControlButtonSize.Default -> 24.dp
-        NowPlayingControlButtonSize.Large -> 32.dp
+        NowPlayingControlButtonSize.Default -> 26.dp
+        NowPlayingControlButtonSize.Large -> 38.dp
     }
 
     IconButton(
-        modifier = Modifier.background(backgroundColor, CircleShape),
+        modifier = Modifier
+            .scale(pressScale)
+            .size(buttonSize)
+            .background(backgroundColor, CircleShape),
+        interactionSource = interactionSource,
         onClick = onClick,
     ) {
-        Icon(
-            icon,
-            null,
-            tint = contentColor,
-            modifier = Modifier.size(iconSize),
-        )
+        // morph بین play و pause
+        AnimatedContent(
+            label = "control-button-icon",
+            targetState = icon,
+            transitionSpec = {
+                (fadeIn(tween(150)) + scaleIn(initialScale = 0.6f, animationSpec = tween(150)))
+                    .togetherWith(
+                        fadeOut(tween(100)) + scaleOut(targetScale = 0.6f, animationSpec = tween(100))
+                    )
+            },
+        ) { targetIcon ->
+            Icon(
+                targetIcon,
+                null,
+                tint = contentColor,
+                modifier = Modifier.size(iconSize),
+            )
+        }
     }
 }

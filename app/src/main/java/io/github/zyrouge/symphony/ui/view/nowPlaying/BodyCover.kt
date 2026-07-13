@@ -1,6 +1,14 @@
 package io.github.zyrouge.symphony.ui.view.nowPlaying
 
 import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.spring
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.scaleIn
+import androidx.compose.animation.scaleOut
 import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.detectTapGestures
@@ -13,20 +21,21 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.LocalContentColor
 import androidx.compose.material3.LocalTextStyle
-import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.FilterQuality
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.min
 import coil.compose.AsyncImage
-import io.github.zyrouge.symphony.services.groove.Song
 import io.github.zyrouge.symphony.ui.components.KeepScreenAwake
 import io.github.zyrouge.symphony.ui.components.LyricsText
 import io.github.zyrouge.symphony.ui.components.TimedContentTextStyle
@@ -37,6 +46,8 @@ import io.github.zyrouge.symphony.ui.helpers.ViewContext
 import io.github.zyrouge.symphony.ui.view.AlbumViewRoute
 import io.github.zyrouge.symphony.ui.view.NowPlayingData
 import io.github.zyrouge.symphony.ui.view.NowPlayingStates
+
+private val coverCornerRadius = 24.dp
 
 @Composable
 fun NowPlayingBodyCover(
@@ -61,7 +72,7 @@ fun NowPlayingBodyCover(
             if (targetStateShowLyrics) {
                 NowPlayingBodyCoverLyrics(context, orientation)
             } else {
-                NowPlayingBodyCoverArtwork(context, data.song)
+                NowPlayingBodyCoverArtwork(context, data)
             }
         }
     }
@@ -74,7 +85,7 @@ private fun NowPlayingBodyCoverLyrics(context: ViewContext, orientation: ScreenO
     if (keepScreenAwake) {
         KeepScreenAwake()
     }
-    
+
     Box(
         modifier = Modifier
             .fillMaxSize()
@@ -83,8 +94,8 @@ private fun NowPlayingBodyCoverLyrics(context: ViewContext, orientation: ScreenO
                 if (orientation == ScreenOrientation.LANDSCAPE) 0.dp else 8.dp
             )
             .background(
-                MaterialTheme.colorScheme.surfaceContainer,
-                RoundedCornerShape(12.dp),
+                Color.Black.copy(alpha = 0.3f),
+                RoundedCornerShape(coverCornerRadius),
             ),
         contentAlignment = Alignment.Center,
     ) {
@@ -103,17 +114,29 @@ private fun NowPlayingBodyCoverLyrics(context: ViewContext, orientation: ScreenO
 }
 
 @Composable
-private fun NowPlayingBodyCoverArtwork(context: ViewContext, song: Song) {
+private fun NowPlayingBodyCoverArtwork(context: ViewContext, data: NowPlayingData) {
     BoxWithConstraints {
         val dimension = min(this@BoxWithConstraints.maxHeight, this@BoxWithConstraints.maxWidth)
+
+        // امضای اپل موزیک: کاور موقع pause کوچیک میشه و با spring برمیگرده
+        val playScale by animateFloatAsState(
+            targetValue = if (data.isPlaying) 1f else 0.85f,
+            animationSpec = spring(
+                dampingRatio = Spring.DampingRatioMediumBouncy,
+                stiffness = Spring.StiffnessLow,
+            ),
+            label = "now-playing-cover-play-scale",
+        )
 
         AnimatedContent(
             label = "now-playing-body-cover-artwork",
             modifier = Modifier.size(dimension),
-            targetState = song,
+            targetState = data.song,
             transitionSpec = {
-                FadeTransition.enterTransition()
-                    .togetherWith(FadeTransition.exitTransition())
+                (fadeIn(tween(400)) + scaleIn(initialScale = 1.05f, animationSpec = tween(400)))
+                    .togetherWith(
+                        fadeOut(tween(250)) + scaleOut(targetScale = 0.95f, animationSpec = tween(250))
+                    )
             },
         ) { targetStateSong ->
             AsyncImage(
@@ -125,7 +148,17 @@ private fun NowPlayingBodyCoverArtwork(context: ViewContext, song: Song) {
                 filterQuality = FilterQuality.High,
                 modifier = Modifier
                     .fillMaxSize()
-                    .clip(RoundedCornerShape(12.dp))
+                    .graphicsLayer {
+                        scaleX = playScale
+                        scaleY = playScale
+                    }
+                    .shadow(
+                        elevation = 24.dp,
+                        shape = RoundedCornerShape(coverCornerRadius),
+                        ambientColor = Color.Black.copy(alpha = 0.7f),
+                        spotColor = Color.Black.copy(alpha = 0.7f),
+                    )
+                    .clip(RoundedCornerShape(coverCornerRadius))
                     .swipeable(
                         minimumDragAmount = 100f,
                         onSwipeLeft = {
@@ -142,7 +175,7 @@ private fun NowPlayingBodyCoverArtwork(context: ViewContext, song: Song) {
                     .pointerInput(Unit) {
                         detectTapGestures { _ ->
                             context.symphony.groove.album
-                                .getIdFromSong(song)
+                                .getIdFromSong(data.song)
                                 ?.let {
                                     context.navController.navigate(AlbumViewRoute(it))
                                 }
@@ -150,6 +183,5 @@ private fun NowPlayingBodyCoverArtwork(context: ViewContext, song: Song) {
                     }
             )
         }
-
     }
 }

@@ -30,7 +30,10 @@ fun NowPlayingAppBar(context: ViewContext) {
             }
         },
         colors = TopAppBarDefaults.centerAlignedTopAppBarColors(
-            containerColor = Color.Transparent
+            containerColor = Color.Transparent,
+            titleContentColor = Color.White,
+            navigationIconContentColor = Color.White,
+            actionIconContentColor = Color.White,
         ),
         navigationIcon = {
             IconButton(
