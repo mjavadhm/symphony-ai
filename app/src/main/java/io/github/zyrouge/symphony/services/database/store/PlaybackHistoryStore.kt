@@ -21,4 +21,13 @@ interface PlaybackHistoryStore {
 
     @Query("SELECT * FROM playback_history ORDER BY playedAt DESC")
     suspend fun getAllHistory(): List<PlaybackHistory>
+
+    @Query("SELECT * FROM playback_history WHERE playedAt >= :since ORDER BY playedAt DESC")
+    suspend fun getHistorySince(since: Long): List<PlaybackHistory>
+
+    @Query("SELECT songId FROM playback_history WHERE hourOfDay BETWEEN :startHour AND :endHour AND skipped = 0 GROUP BY songId ORDER BY COUNT(id) DESC LIMIT :limit")
+    suspend fun getTopSongsForHours(startHour: Int, endHour: Int, limit: Int): List<String>
+
+    @Query("SELECT COUNT(*) FROM playback_history WHERE skipped = 1 AND songId = :songId")
+    suspend fun getSkipCount(songId: String): Int
 }

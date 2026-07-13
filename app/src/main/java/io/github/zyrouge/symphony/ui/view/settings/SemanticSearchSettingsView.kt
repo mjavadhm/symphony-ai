@@ -13,6 +13,9 @@ import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.DataObject
 import androidx.compose.material.icons.filled.Psychology
+import androidx.compose.material.icons.filled.Upload
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.material3.CenterAlignedTopAppBar
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
@@ -97,6 +100,12 @@ fun SemanticSearchSettingsView(context: ViewContext) {
     }
 
     val jsonImportState by context.symphony.semanticSearch.jsonImportState.collectAsState()
+    val jsonExportState by context.symphony.semanticSearch.jsonExportState.collectAsState()
+    val exportLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.CreateDocument("application/json")
+    ) { uri ->
+        uri?.let { context.symphony.semanticSearch.startJsonExport(it) }
+    }
 
     Scaffold(
         modifier = Modifier.fillMaxSize(),
@@ -189,6 +198,31 @@ fun SemanticSearchSettingsView(context: ViewContext) {
                                 jsonLauncher.launch(arrayOf("application/json", "*/*"))
                             }
                         )
+                        SettingsSimpleTile(
+                            icon = { Icon(Icons.Filled.Upload, null) },
+                            title = { Text("Export AI Index") },
+                            onClick = {
+                                exportLauncher.launch("symphony-ai-index.json")
+                            }
+                        )
+                        if (jsonExportState.isActive || jsonExportState.text.isNotEmpty()) {
+                            androidx.compose.material3.Card(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(horizontal = 16.dp, vertical = 4.dp)
+                            ) {
+                                androidx.compose.foundation.layout.Row(
+                                    modifier = Modifier.padding(12.dp),
+                                    verticalAlignment = androidx.compose.ui.Alignment.CenterVertically,
+                                ) {
+                                    if (jsonExportState.isActive) {
+                                        androidx.compose.material3.CircularProgressIndicator(modifier = Modifier.size(20.dp), strokeWidth = 2.dp)
+                                        androidx.compose.foundation.layout.Spacer(modifier = Modifier.width(12.dp))
+                                    }
+                                    Text(jsonExportState.text, style = androidx.compose.material3.MaterialTheme.typography.bodySmall)
+                                }
+                            }
+                        }
 
                         if (jsonImportState.isActive || jsonImportState.text.isNotEmpty()) {
                             androidx.compose.material3.Card(

@@ -55,15 +55,18 @@ class SemanticSearchRepository(boxStore: BoxStore) {
     fun insertTrack(filePath: String, title: String, artist: String, durationSeconds: Int, chunkEmbeddings: List<FloatArray>) {
         if (chunkEmbeddings.isEmpty()) return
 
-        // Calculate mean embedding
+        // ✅ اول تک‌تک چانک‌ها normalize میشن (فیکس باگ maxScore)
+        val normalizedChunks = chunkEmbeddings.map { normalize(it) }
+
+        // Calculate mean embedding از روی چانک‌های normalize شده
         val meanEmb = FloatArray(512)
-        for (emb in chunkEmbeddings) {
+        for (emb in normalizedChunks) {
             for (i in 0 until 512) {
                 meanEmb[i] += emb[i]
             }
         }
         for (i in 0 until 512) {
-            meanEmb[i] /= chunkEmbeddings.size.toFloat()
+            meanEmb[i] /= normalizedChunks.size.toFloat()
         }
         val normalizedMean = normalize(meanEmb)
 
@@ -75,7 +78,7 @@ class SemanticSearchRepository(boxStore: BoxStore) {
             meanEmbedding = normalizedMean
         )
         
-        val chunksToInsert = chunkEmbeddings.mapIndexed { index, emb ->
+        val chunksToInsert = normalizedChunks.mapIndexed { index, emb ->
             val chunk = TrackChunkEntity(
                 offsetSeconds = index * 30,
                 embedding = emb
@@ -111,15 +114,20 @@ class SemanticSearchRepository(boxStore: BoxStore) {
                 if (chunk.embedding != null) cosineSimilarity(queryEmbedding, chunk.embedding!!) else 0f
             }
             
-            val maxScore = similarities.maxOrNull() ?: 0f
+            val sorted = similarities.sortedDescending()
+            val maxScore = sorted.firstOrNull() ?: 0f
+            // میانگین «نمره‌ی» ۳ چانک برتر — نه میانگین بردار
+            val top3 = sorted.take(3)
+            val top3Mean = if (top3.isEmpty()) 0f else top3.sum() / top3.size
             val meanScore = if (track.meanEmbedding != null) cosineSimilarity(queryEmbedding, track.meanEmbedding!!) else 0f
-            val hybridScore = 0.6f * meanScore + 0.4f * maxScore
+            val hybridScore = 0.5f * top3Mean + 0.3f * meanScore + 0.2f * maxScore
             
             results.add(SearchResult(track, hybridScore, maxScore, meanScore))
         }
 
         // 4. Sort and return top N
-        return results.sortedByDescending { it.hybridScore }.take(topN)
+        val sortedResults = results.sortedByDescending { it.hybridScore }
+        return mmrRerank(sortedResults, topN)
     }
 
     /**
@@ -137,38 +145,41 @@ class SemanticSearchRepository(boxStore: BoxStore) {
         topN: Int = 20,
         toleranceSeconds: Int = 2
     ): List<SearchResult> {
-        val allTracks = trackBox.all
-        
-        // Find source track by metadata
-        val sourceTrack = allTracks.find { track ->
+        // پیدا کردن ترک مبدأ با متادیتا — اسکن سبکه (بدون عملیات برداری)
+        val sourceTrack = trackBox.all.find { track ->
             val titleMatch = track.title?.equals(title, ignoreCase = true) == true
             val artistMatch = if (artist.isNotEmpty() && !track.artist.isNullOrEmpty()) {
                 track.artist!!.equals(artist, ignoreCase = true) ||
                 track.artist!!.contains(artist, ignoreCase = true) ||
                 artist.contains(track.artist!!, ignoreCase = true)
             } else {
-                true // skip artist check if not available
+                true
             }
             val durationMatch = kotlin.math.abs(track.durationSeconds - durationSeconds) <= toleranceSeconds
             titleMatch && artistMatch && durationMatch
         } ?: return emptyList()
-        
+
         val sourceEmbedding = sourceTrack.meanEmbedding ?: return emptyList()
 
-        val results = mutableListOf<SearchResult>()
-        for (track in allTracks) {
-            if (track.id == sourceTrack.id) continue
-            val meanEmb = track.meanEmbedding ?: continue
-            val score = cosineSimilarity(sourceEmbedding, meanEmb)
-            results.add(SearchResult(track, score, score, score))
-        }
+        // ✅ جستجوی همسایه‌ها با ایندکس HNSW به جای brute-force
+        val neighbors = trackBox.query(
+            TrackEntity_.meanEmbedding.nearestNeighbors(sourceEmbedding, topN + 1)
+        ).build().findWithScores()
 
-        return results.sortedByDescending { it.hybridScore }.take(topN)
+        return neighbors.mapNotNull { result ->
+            val track = result.get()
+            if (track.id == sourceTrack.id) return@mapNotNull null
+            // با VectorDistanceType.COSINE: فاصله = 1 - cosine → شباهت = 1 - فاصله
+            val score = (1.0 - result.score).toFloat()
+            SearchResult(track, score, score, score)
+        }.take(topN)
     }
     
     fun getAllTracksCount(): Long {
         return trackBox.count()
     }
+    
+    fun getAllTracks(): List<TrackEntity> = trackBox.all
     
     fun clearAll() {
         trackBox.removeAll()
@@ -184,6 +195,48 @@ class SemanticSearchRepository(boxStore: BoxStore) {
         norm = sqrt(norm)
         if (norm == 0f) return array
         return FloatArray(array.size) { array[it] / norm }
+    }
+
+    /**
+     * MMR: تنوع در نتایج — از ردیف شدن ۱۰ آهنگ تقریباً یکسان جلوگیری میکنه.
+     * diversityWeight = 0.3 یعنی ۷۰٪ relevance، ۳۰٪ جریمه‌ی شباهت به انتخاب‌شده‌ها.
+     */
+    private fun mmrRerank(
+        candidates: List<SearchResult>,
+        topN: Int,
+        diversityWeight: Float = 0.3f
+    ): List<SearchResult> {
+        if (candidates.isEmpty()) return emptyList()
+        // برای لیست‌های خیلی بزرگ (حالت Limit by Similarity) MMR لازم نیست و کنده
+        if (topN > 100) return candidates.take(topN)
+
+        val selected = mutableListOf<SearchResult>()
+        val remaining = candidates.toMutableList()
+        selected.add(remaining.removeAt(0))
+
+        while (selected.size < topN && remaining.isNotEmpty()) {
+            var best: SearchResult? = null
+            var bestScore = Float.NEGATIVE_INFINITY
+            for (c in remaining) {
+                val emb = c.track.meanEmbedding ?: continue
+                var maxSimToSelected = 0f
+                for (s in selected) {
+                    val se = s.track.meanEmbedding ?: continue
+                    val sim = cosineSimilarity(emb, se)
+                    if (sim > maxSimToSelected) maxSimToSelected = sim
+                }
+                val mmr = (1f - diversityWeight) * c.hybridScore - diversityWeight * maxSimToSelected
+                if (mmr > bestScore) {
+                    bestScore = mmr
+                    best = c
+                }
+            }
+            best?.let {
+                selected.add(it)
+                remaining.remove(it)
+            } ?: break
+        }
+        return selected
     }
 
     private fun cosineSimilarity(a: FloatArray, b: FloatArray): Float {

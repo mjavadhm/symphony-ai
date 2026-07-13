@@ -10,5 +10,17 @@ data class PlaybackHistory(
     val playedAt: Long,
     val durationPlayed: Long,
     val isShuffleMode: Boolean = false,
-    val loopMode: String = "None"
+    val loopMode: String = "None",
+    // v2 — برای recommender
+    val songDurationMs: Long = 0,
+    val completionRate: Float = 0f,      // چند درصد آهنگ شنیده شد
+    val skipped: Boolean = false,        // سیگنال منفی
+    val hourOfDay: Int = -1,             // 0..23
+    val dayOfWeek: Int = -1,             // Calendar.DAY_OF_WEEK
+    // متادیتا برای merge بین دستگاه‌ها (songId دستگاه-محوره)
+    val title: String = "",
+    val artist: String = "",
+    // دیوایس
+    val deviceId: String = "",
+    val deviceName: String = "",
 )

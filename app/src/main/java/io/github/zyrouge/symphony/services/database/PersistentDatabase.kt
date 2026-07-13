@@ -13,7 +13,8 @@ import io.github.zyrouge.symphony.utils.RoomConvertors
 
 @Database(
     entities = [Playlist::class, PlaybackHistory::class],
-    version = 3
+    version = 4,
+    exportSchema = false
 )
 @TypeConverters(RoomConvertors::class)
 abstract class PersistentDatabase : RoomDatabase() {

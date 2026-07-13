@@ -4,7 +4,6 @@ plugins {
     alias(libs.plugins.compose.compiler)
     alias(libs.plugins.kotlin.serialization)
     alias(libs.plugins.ksp)
-    alias(libs.plugins.room)
     id("io.objectbox")
 }
 
@@ -109,9 +108,10 @@ android {
         }
     }
 
-    room {
-        schemaDirectory("$projectDir/room-schemas")
-    }
+}
+
+ksp {
+    arg("room.schemaLocation", "$projectDir/room-schemas")
 }
 
 dependencies {

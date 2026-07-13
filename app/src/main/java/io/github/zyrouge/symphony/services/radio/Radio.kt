@@ -325,16 +325,33 @@ class Radio(private val symphony: Symphony) : Symphony.Hooks {
             player = null
             p.setOnPlaybackPositionListener {}
             
-            // Log playback history if played for at least 30 seconds
-            if (p.activelyPlayedMs >= 30_000) {
+            // Log playback history (از ۵ ثانیه به بالا — skip ها هم ثبت میشن)
+            if (p.activelyPlayedMs >= 5_000) {
+                val playedMs = p.activelyPlayedMs
+                val song = symphony.groove.song.get(p.id)
                 symphony.groove.coroutineScope.launch {
                     try {
+                        val now = System.currentTimeMillis()
+                        val cal = java.util.Calendar.getInstance().apply { timeInMillis = now }
+                        val songDurationMs = song?.duration ?: 0L
+                        val completion = if (songDurationMs > 0) {
+                            (playedMs.toFloat() / songDurationMs).coerceIn(0f, 1f)
+                        } else 0f
                         val history = io.github.zyrouge.symphony.services.database.entities.PlaybackHistory(
                             songId = p.id,
-                            playedAt = System.currentTimeMillis(),
-                            durationPlayed = p.activelyPlayedMs,
+                            playedAt = now,
+                            durationPlayed = playedMs,
                             isShuffleMode = queue.currentShuffleMode,
-                            loopMode = queue.currentLoopMode.name
+                            loopMode = queue.currentLoopMode.name,
+                            songDurationMs = songDurationMs,
+                            completionRate = completion,
+                            skipped = playedMs < 30_000 && completion < 0.5f,
+                            hourOfDay = cal.get(java.util.Calendar.HOUR_OF_DAY),
+                            dayOfWeek = cal.get(java.util.Calendar.DAY_OF_WEEK),
+                            title = song?.title ?: "",
+                            artist = song?.artists?.joinToString() ?: "",
+                            deviceId = io.github.zyrouge.symphony.utils.DeviceInfo.deviceId(symphony.applicationContext),
+                            deviceName = io.github.zyrouge.symphony.utils.DeviceInfo.deviceName(),
                         )
                         symphony.database.playbackHistory.insert(history)
                     } catch (e: Exception) {

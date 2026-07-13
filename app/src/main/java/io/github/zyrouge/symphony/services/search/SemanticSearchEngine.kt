@@ -42,6 +42,12 @@ data class JsonImportState(
     val text: String = "",
 )
 
+data class JsonExportState(
+    val isActive: Boolean = false,
+    val count: Int = 0,
+    val text: String = "",
+)
+
 class SemanticSearchEngine(val symphony: Symphony) : Symphony.Hooks {
     companion object {
         @Volatile
@@ -62,6 +68,9 @@ class SemanticSearchEngine(val symphony: Symphony) : Symphony.Hooks {
 
     private val _jsonImportState = MutableStateFlow(JsonImportState())
     val jsonImportState = _jsonImportState.asStateFlow()
+
+    private val _jsonExportState = MutableStateFlow(JsonExportState())
+    val jsonExportState = _jsonExportState.asStateFlow()
 
     private var indexingJob: Job? = null
 
@@ -270,6 +279,65 @@ class SemanticSearchEngine(val symphony: Symphony) : Symphony.Hooks {
         }
     }
 
+    fun startJsonExport(uri: Uri) {
+        if (_jsonExportState.value.isActive) return
+        indexingScope.launch {
+            _jsonExportState.value = JsonExportState(isActive = true, text = "Exporting…")
+            val res = exportJsonDatabase(uri) { count ->
+                _jsonExportState.value = JsonExportState(true, count, "Exported $count tracks…")
+            }
+            _jsonExportState.update {
+                it.copy(
+                    isActive = false,
+                    text = if (res.isSuccess) "Exported ${res.getOrNull() ?: 0} tracks ✓"
+                    else "Export failed: ${res.exceptionOrNull()?.message}",
+                )
+            }
+        }
+    }
+
+    private suspend fun exportJsonDatabase(
+        uri: Uri,
+        onProgress: suspend (Int) -> Unit = {}
+    ): Result<Int> {
+        return withContext(Dispatchers.IO) {
+            try {
+                val repo = repository
+                    ?: return@withContext Result.failure(Exception("Repository is not initialized."))
+                val outputStream = symphony.applicationContext.contentResolver.openOutputStream(uri)
+                    ?: return@withContext Result.failure(Exception("Failed to open output file."))
+
+                var exported = 0
+                android.util.JsonWriter(java.io.OutputStreamWriter(outputStream, "UTF-8")).use { writer ->
+                    writer.beginArray()
+                    for (track in repo.getAllTracks()) {
+                        writer.beginObject()
+                        writer.name("filename").value(track.filePath ?: "")
+                        writer.name("title").value(track.title ?: "")
+                        writer.name("artist").value(track.artist ?: "")
+                        writer.name("duration").value(track.durationSeconds.toLong())
+                        writer.name("chunks")
+                        writer.beginArray()
+                        for (chunk in track.chunks.sortedBy { it.offsetSeconds }) {
+                            writer.beginArray()
+                            chunk.embedding?.forEach { v -> writer.value(v.toDouble()) }
+                            writer.endArray()
+                        }
+                        writer.endArray()
+                        writer.endObject()
+                        exported++
+                        if (exported % 10 == 0) onProgress(exported)
+                    }
+                    writer.endArray()
+                }
+                Result.success(exported)
+            } catch (e: Exception) {
+                e.printStackTrace()
+                Result.failure(e)
+            }
+        }
+    }
+
     fun startIndexing(songs: List<Song>) {
         if (_indexingState.value.isActive || songs.isEmpty()) return
 
@@ -316,24 +384,44 @@ class SemanticSearchEngine(val symphony: Symphony) : Symphony.Hooks {
     fun indexedTrackCount(): Long = repository?.getIndexedTrackCount() ?: 0L
 
     suspend fun search(query: String, limit: Int = 10): List<String> {
+        return searchDetailed(query, limit).mapNotNull { it.track.filePath }
+    }
+
+    suspend fun searchDetailed(
+        query: String,
+        limit: Int = 10
+    ): List<io.github.zyrouge.symphony.services.search.data.SearchResult> {
         return withContext(Dispatchers.Default) {
             try {
                 if (_isReady.value.not() || tokenizer == null || modelRunner == null || repository == null) {
-                    return@withContext emptyList<String>()
+                    return@withContext emptyList()
                 }
-
-                val (inputIds, attentionMask) = tokenizer!!.encode(query)
-                val queryEmbedding = modelRunner!!.getTextEmbedding(inputIds, attentionMask)
-                
-                val results = repository!!.searchHybrid(queryEmbedding, topN = limit)
-                
-                // Return just the filenames or paths. We will map them in the UI.
-                results.mapNotNull { it.track.filePath }
+                val queryEmbedding = buildQueryEmbedding(query)
+                repository!!.searchHybrid(queryEmbedding, topN = limit)
             } catch (e: Exception) {
                 e.printStackTrace()
-                emptyList<String>()
+                emptyList()
             }
         }
+    }
+
+    // Prompt ensemble: میانگین امبدینگ چند پارافریز هم‌معنی از یک کوئری
+    private fun buildQueryEmbedding(query: String): FloatArray {
+        val q = query.trim()
+        val templates = listOf(q, "a $q song", "$q music")
+        val sum = FloatArray(512)
+        for (t in templates) {
+            val (inputIds, attentionMask) = tokenizer!!.encode(t)
+            val emb = modelRunner!!.getTextEmbedding(inputIds, attentionMask)
+            for (i in 0 until minOf(512, emb.size)) {
+                sum[i] += emb[i]
+            }
+        }
+        // بعد از میانگین حتماً دوباره normalize
+        var norm = 0f
+        for (v in sum) norm += v * v
+        norm = kotlin.math.sqrt(norm)
+        return if (norm > 0f) FloatArray(sum.size) { sum[it] / norm } else sum
     }
 
     /**

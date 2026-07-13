@@ -207,7 +207,15 @@ fun DiscoverView(context: ViewContext) {
                                 val limit = if (limitMode == 0) trackCount.toInt() else 500
                                 
                                 val filePaths = if (searchMode == 0) {
-                                    context.symphony.semanticSearch.search(textQuery, limit)
+                                    val results = context.symphony.semanticSearch.searchDetailed(textQuery, limit)
+                                    if (limitMode == 1 && results.isNotEmpty()) {
+                                        // آستانه نسبی: نسبت به بهترین نتیجه سنجیده میشه
+                                        val topScore = results.first().hybridScore
+                                        results.filter { it.hybridScore >= (similarityThreshold / 100f) * topScore }
+                                            .mapNotNull { it.track.filePath }
+                                    } else {
+                                        results.mapNotNull { it.track.filePath }
+                                    }
                                 } else {
                                     if (selectedReferenceSong != null) {
                                         val results = context.symphony.semanticSearch.findSimilarSongs(
