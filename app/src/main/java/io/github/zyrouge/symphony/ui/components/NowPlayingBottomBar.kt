@@ -26,6 +26,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.wrapContentHeight
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.border
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.FastForward
 import androidx.compose.material.icons.filled.FastRewind
@@ -34,6 +35,7 @@ import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.SkipNext
 import androidx.compose.material.icons.filled.SkipPrevious
 import androidx.compose.material3.ElevatedCard
+import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -123,7 +125,19 @@ fun NowPlayingBottomBar(context: ViewContext, insetPadding: Boolean = true) {
         }
     ) { currentPlayingSongTarget ->
         currentPlayingSongTarget?.let { currentSong ->
-            Column {
+            Column(
+                modifier = Modifier.padding(start = 14.dp, end = 14.dp, bottom = 10.dp),
+            ) {
+                Box(
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(26.dp))
+                        .border(
+                            1.dp,
+                            MaterialTheme.colorScheme.onSurface.copy(alpha = 0.12f),
+                            RoundedCornerShape(26.dp),
+                        ),
+                ) {
+                Column {
                 Box(
                     modifier = Modifier
                         .background(MaterialTheme.colorScheme.surfaceTint.copy(alpha = 0.25f))
@@ -151,6 +165,10 @@ fun NowPlayingBottomBar(context: ViewContext, insetPadding: Boolean = true) {
                             },
                         ),
                     shape = RectangleShape,
+                    colors = CardDefaults.elevatedCardColors(
+                        containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.6f),
+                    ),
+                    elevation = CardDefaults.elevatedCardElevation(defaultElevation = 0.dp),
                     onClick = {
                         context.navController.navigate(NowPlayingViewRoute)
                     }
@@ -248,6 +266,8 @@ fun NowPlayingBottomBar(context: ViewContext, insetPadding: Boolean = true) {
                         }
                         Spacer(modifier = Modifier.width(8.dp))
                     }
+                }
+                }
                 }
                 if (insetPadding) {
                     Spacer(modifier = Modifier.navigationBarsPadding())

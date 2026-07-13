@@ -10,14 +10,17 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.border
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.QueueMusic
 import androidx.compose.material.icons.automirrored.outlined.QueueMusic
@@ -78,6 +81,7 @@ import androidx.compose.ui.unit.dp
 import io.github.zyrouge.symphony.services.groove.Groove
 import io.github.zyrouge.symphony.ui.components.IntroductoryDialog
 import io.github.zyrouge.symphony.ui.components.NowPlayingBottomBar
+import io.github.zyrouge.symphony.ui.components.HomeDynamicBackground
 import io.github.zyrouge.symphony.ui.components.TopAppBarMinimalTitle
 import io.github.zyrouge.symphony.ui.components.swipeable
 import io.github.zyrouge.symphony.ui.helpers.ScaleTransition
@@ -185,9 +189,12 @@ fun HomeView(context: ViewContext) {
     var showOptionsDropdown by remember { mutableStateOf(false) }
     var showTabsSheet by remember { mutableStateOf(false) }
 
-    Scaffold(
-        modifier = Modifier.fillMaxSize(),
-        topBar = {
+    Box(modifier = Modifier.fillMaxSize()) {
+        HomeDynamicBackground(context)
+        Scaffold(
+            modifier = Modifier.fillMaxSize(),
+            containerColor = Color.Transparent,
+            topBar = {
             CenterAlignedTopAppBar(
                 colors = TopAppBarDefaults.centerAlignedTopAppBarColors(
                     containerColor = Color.Transparent
@@ -297,6 +304,14 @@ fun HomeView(context: ViewContext) {
                 NowPlayingBottomBar(context, false)
                 NavigationBar(
                     modifier = Modifier
+                        .navigationBarsPadding()
+                        .padding(start = 14.dp, end = 14.dp, bottom = 10.dp)
+                        .clip(RoundedCornerShape(30.dp))
+                        .border(
+                            1.dp,
+                            MaterialTheme.colorScheme.onSurface.copy(alpha = 0.12f),
+                            RoundedCornerShape(30.dp),
+                        )
                         .pointerInput(Unit) {
                             detectTapGestures {
                                 showTabsSheet = true
@@ -304,7 +319,9 @@ fun HomeView(context: ViewContext) {
                         }
                         .swipeable(onSwipeUp = {
                             showTabsSheet = true
-                        })
+                        }),
+                    containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.55f),
+                    windowInsets = WindowInsets(0, 0, 0, 0),
                 ) {
                     Spacer(modifier = Modifier.width(2.dp))
                     tabs.map { x ->
@@ -353,6 +370,7 @@ fun HomeView(context: ViewContext) {
             }
         }
     )
+    }
 
     if (showTabsSheet) {
         val sheetState = rememberModalBottomSheetState()

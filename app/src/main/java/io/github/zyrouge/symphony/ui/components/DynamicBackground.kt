@@ -9,9 +9,12 @@ import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.compositionLocalOf
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -128,4 +131,70 @@ fun rememberArtworkAccent(context: ViewContext, song: Song): Color {
         }
     }
     return accent
+}
+
+/**
+ * پسزمینهی داینامیک «محو» برای صفحههای لایبرری —
+ * کاور آهنگ در حال پخش فقط یه تهرنگ میده، خوانایی لیستها حفظ میشه.
+ */
+@Composable
+fun HomeDynamicBackground(
+    context: ViewContext,
+    modifier: Modifier = Modifier,
+) {
+    val queue by context.symphony.radio.observatory.queue.collectAsState()
+    val queueIndex by context.symphony.radio.observatory.queueIndex.collectAsState()
+    val currentSong by remember(queue, queueIndex) {
+        derivedStateOf {
+            queue.getOrNull(queueIndex)?.let { context.symphony.groove.song.get(it) }
+        }
+    }
+    val surface = MaterialTheme.colorScheme.surface
+
+    Box(
+        modifier = modifier
+            .fillMaxSize()
+            .background(surface)
+    ) {
+        AnimatedContent(
+            label = "home-dynamic-background",
+            targetState = currentSong,
+            transitionSpec = {
+                fadeIn(tween(800)).togetherWith(fadeOut(tween(800)))
+            },
+        ) { targetSong ->
+            targetSong?.let { song ->
+                AsyncImage(
+                    song.createArtworkImageRequest(context.symphony).build(),
+                    null,
+                    contentScale = ContentScale.Crop,
+                    colorFilter = ColorFilter.colorMatrix(
+                        ColorMatrix().apply { setToSaturation(1.4f) }
+                    ),
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .graphicsLayer {
+                            scaleX = 1.3f
+                            scaleY = 1.3f
+                            alpha = 0.5f
+                        }
+                        .blur(100.dp)
+                )
+            } ?: Box(modifier = Modifier.fillMaxSize())
+        }
+        // اسکریم قوی از رنگ تم — پایین تیرهتر که پیلها بیشتر «شیشه» دیده بشن
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .background(
+                    Brush.verticalGradient(
+                        colors = listOf(
+                            surface.copy(alpha = 0.72f),
+                            surface.copy(alpha = 0.8f),
+                            surface.copy(alpha = 0.88f),
+                        )
+                    )
+                )
+        )
+    }
 }
