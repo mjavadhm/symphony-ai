@@ -90,6 +90,7 @@ import io.github.zyrouge.symphony.ui.components.NowPlayingBottomBar
 import io.github.zyrouge.symphony.ui.components.HomeDynamicBackground
 import io.github.zyrouge.symphony.ui.components.GlassSurface
 import io.github.zyrouge.symphony.ui.components.LocalHazeState
+import io.github.zyrouge.symphony.ui.components.LocalHomeContentPadding
 import dev.chrisbanes.haze.HazeState
 import io.github.zyrouge.symphony.ui.components.TopAppBarMinimalTitle
 import io.github.zyrouge.symphony.ui.components.swipeable
@@ -218,15 +219,29 @@ fun HomeView(context: ViewContext) {
             AnimatedContent(
                 label = "home-content",
                 targetState = currentTab,
-                modifier = Modifier
-                    .padding(contentPadding)
-                    .fillMaxSize(),
+                modifier = Modifier.fillMaxSize(),
                 transitionSpec = {
                     SlideTransition.slideUp.enterTransition()
                         .togetherWith(ScaleTransition.scaleDown.exitTransition())
                 },
             ) { page ->
-                when (page) {
+                val edgeToEdge = when (page) {
+                    HomePage.Songs, HomePage.Albums, HomePage.Artists,
+                    HomePage.AlbumArtists, HomePage.Genres, HomePage.Playlists -> true
+
+                    else -> false
+                }
+
+                CompositionLocalProvider(LocalHomeContentPadding provides contentPadding) {
+                    Box(
+                        modifier = when {
+                            edgeToEdge -> Modifier.fillMaxSize()
+                            else -> Modifier
+                                .padding(contentPadding)
+                                .fillMaxSize()
+                        }
+                    ) {
+                        when (page) {
                     HomePage.ForYou -> ForYouView(context)
                     HomePage.Discover -> DiscoverView(context)
                     HomePage.Songs -> SongsView(context)
@@ -238,6 +253,8 @@ fun HomeView(context: ViewContext) {
                     HomePage.Folders -> FoldersView(context)
                     HomePage.Playlists -> PlaylistsView(context)
                     HomePage.Tree -> TreeView(context)
+                        }
+                    }
                 }
             }
         },

@@ -55,6 +55,7 @@ fun ResponsiveGrid(
         LazyVerticalGrid(
             state = gridState,
             columns = GridCells.Fixed(effectiveColumn),
+            contentPadding = LocalHomeContentPadding.current,
             modifier = Modifier.drawScrollBar(gridState, effectiveColumn)
         ) {
             content(responsiveGridData)

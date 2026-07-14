@@ -3,6 +3,7 @@ package io.github.zyrouge.symphony.ui.components
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxScope
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.compositionLocalOf
@@ -22,6 +23,12 @@ import dev.chrisbanes.haze.hazeEffect
  * توی HomeView ساخته و provide میشه.
  */
 val LocalHazeState = compositionLocalOf { HazeState() }
+
+/**
+ * پدینگ نوارهای بالا/پایین Home که بهجای padding سفت،
+ * به contentPadding لیستها داده میشه تا محتوا از زیر نوارها رد بشه.
+ */
+val LocalHomeContentPadding = compositionLocalOf { PaddingValues(0.dp) }
 
 /**
  * یه سطح شیشهای واقعی (بلور از پشت) برای پیل/دایرههای سبک تلگرام.

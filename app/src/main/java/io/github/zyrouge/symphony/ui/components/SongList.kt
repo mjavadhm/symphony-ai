@@ -111,6 +111,7 @@ fun SongList(
 
                     LazyColumn(
                         state = lazyListState,
+                        contentPadding = LocalHomeContentPadding.current,
                         modifier = Modifier.drawScrollBar(lazyListState)
                     ) {
                         leadingContent?.invoke(this)
