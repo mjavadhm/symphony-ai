@@ -6,6 +6,7 @@ import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -70,7 +71,7 @@ fun <T> MediaSortBar(
             .fillMaxWidth()
             .padding(horizontal = 14.dp, vertical = 6.dp)
     ) {
-        GlassSurface(shape = pillShape) {
+        GlassSurface(shape = pillShape, modifier = Modifier.height(48.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Spacer(modifier = Modifier.width(4.dp))
                 IconButton(
@@ -130,7 +131,7 @@ fun <T> MediaSortBar(
                 Spacer(modifier = Modifier.width(4.dp))
             }
         }
-        GlassSurface(shape = pillShape) {
+        GlassSurface(shape = pillShape, modifier = Modifier.height(48.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Spacer(modifier = Modifier.width(16.dp))
                 ProvideTextStyle(currentTextStyle) {

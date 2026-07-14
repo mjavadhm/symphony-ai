@@ -38,7 +38,7 @@ fun GlassSurface(
     modifier: Modifier = Modifier,
     shape: Shape,
     border: Boolean = true,
-    tintAlpha: Float = 0.35f,
+    tintAlpha: Float = 0.25f,
     blurRadius: Dp = 24.dp,
     content: @Composable BoxScope.() -> Unit,
 ) {

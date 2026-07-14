@@ -22,6 +22,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import dev.chrisbanes.haze.hazeSource
 import io.github.zyrouge.symphony.services.groove.Groove
 import io.github.zyrouge.symphony.services.groove.Song
 import io.github.zyrouge.symphony.services.groove.repositories.SongRepository
@@ -112,7 +113,9 @@ fun SongList(
                     LazyColumn(
                         state = lazyListState,
                         contentPadding = LocalHomeContentPadding.current,
-                        modifier = Modifier.drawScrollBar(lazyListState)
+                        modifier = Modifier
+                            .hazeSource(state = LocalHazeState.current, zIndex = 1f)
+                            .drawScrollBar(lazyListState)
                     ) {
                         leadingContent?.invoke(this)
                         itemsIndexed(

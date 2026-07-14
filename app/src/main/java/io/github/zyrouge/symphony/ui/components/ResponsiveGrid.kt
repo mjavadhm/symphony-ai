@@ -14,6 +14,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalConfiguration
+import dev.chrisbanes.haze.hazeSource
 import io.github.zyrouge.symphony.ui.components.settings.SettingsSliderDialog
 import io.github.zyrouge.symphony.ui.helpers.ViewContext
 
@@ -56,7 +57,9 @@ fun ResponsiveGrid(
             state = gridState,
             columns = GridCells.Fixed(effectiveColumn),
             contentPadding = LocalHomeContentPadding.current,
-            modifier = Modifier.drawScrollBar(gridState, effectiveColumn)
+            modifier = Modifier
+                .hazeSource(state = LocalHazeState.current, zIndex = 1f)
+                .drawScrollBar(gridState, effectiveColumn)
         ) {
             content(responsiveGridData)
         }
