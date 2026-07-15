@@ -10,6 +10,7 @@ import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -376,46 +377,48 @@ private fun SongTreeListMediaSortBar(
     Row(
         horizontalArrangement = Arrangement.SpaceBetween,
         verticalAlignment = Alignment.CenterVertically,
-        modifier = Modifier.fillMaxWidth(),
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 14.dp, vertical = 4.dp),
     ) {
-        Box(
-            modifier = Modifier
-                .padding(8.dp, 4.dp)
-                .clip(RoundedCornerShape(100))
-                .clickable {
-                    showSortMenu = !showSortMenu
-                }
-                .padding(8.dp, 8.dp)
-        ) {
-            ProvideTextStyle(value = currentTextStyle) {
-                Row(
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                    modifier = Modifier.padding(end = 2.dp),
-                ) {
-                    Icon(
-                        when {
-                            pathsSortReverse -> Icons.Filled.ArrowDownward
-                            else -> Icons.Filled.ArrowUpward
-                        },
-                        null,
-                        modifier = Modifier.size(12.dp),
-                    )
-                    Text(pathsSortBy.label(context))
-                    HorizontalDivider(
-                        modifier = Modifier
-                            .size(9.dp, 12.dp)
-                            .padding(4.dp, 0.dp)
-                    )
-                    Icon(
-                        when {
-                            songsSortReverse -> Icons.Filled.ArrowDownward
-                            else -> Icons.Filled.ArrowUpward
-                        },
-                        null,
-                        modifier = Modifier.size(12.dp),
-                    )
-                    Text(songsSortBy.label(context))
+        Box {
+            GlassSurface(
+                modifier = Modifier
+                    .height(48.dp)
+                    .clip(RoundedCornerShape(50))
+                    .clickable { showSortMenu = !showSortMenu },
+                shape = RoundedCornerShape(50),
+            ) {
+                ProvideTextStyle(value = currentTextStyle) {
+                    Row(
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        modifier = Modifier.padding(horizontal = 16.dp),
+                    ) {
+                        Icon(
+                            when {
+                                pathsSortReverse -> Icons.Filled.ArrowDownward
+                                else -> Icons.Filled.ArrowUpward
+                            },
+                            null,
+                            modifier = Modifier.size(12.dp),
+                        )
+                        Text(pathsSortBy.label(context))
+                        HorizontalDivider(
+                            modifier = Modifier
+                                .size(9.dp, 12.dp)
+                                .padding(4.dp, 0.dp)
+                        )
+                        Icon(
+                            when {
+                                songsSortReverse -> Icons.Filled.ArrowDownward
+                                else -> Icons.Filled.ArrowUpward
+                            },
+                            null,
+                            modifier = Modifier.size(12.dp),
+                        )
+                        Text(songsSortBy.label(context))
+                    }
                 }
             }
             DropdownMenu(
@@ -468,11 +471,16 @@ private fun SongTreeListMediaSortBar(
                 }
             }
         }
-        Text(
-            context.symphony.t.XSongs(songsCount.toString()),
-            style = currentTextStyle,
-            modifier = Modifier.padding(16.dp, 0.dp),
-        )
+        GlassSurface(
+            modifier = Modifier.height(48.dp),
+            shape = RoundedCornerShape(50),
+        ) {
+            Text(
+                context.symphony.t.XSongs(songsCount.toString()),
+                style = currentTextStyle,
+                modifier = Modifier.padding(horizontal = 16.dp),
+            )
+        }
     }
 }
 

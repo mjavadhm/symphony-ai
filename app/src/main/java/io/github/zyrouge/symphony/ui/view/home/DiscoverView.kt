@@ -1,7 +1,10 @@
 package io.github.zyrouge.symphony.ui.view.home
 
+import androidx.compose.animation.animateColorAsState
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.material.icons.Icons
@@ -68,19 +71,12 @@ fun DiscoverView(context: ViewContext) {
             } else {
                 item {
                     Column(modifier = Modifier.fillMaxWidth()) {
-                        // Mode Switcher
-                    TabRow(selectedTabIndex = searchMode) {
-                        Tab(
-                            selected = searchMode == 0,
-                            onClick = { searchMode = 0 },
-                            text = { Text("Prompt") }
-                        )
-                        Tab(
-                            selected = searchMode == 1,
-                            onClick = { searchMode = 1 },
-                            text = { Text("Reference Song") }
-                        )
-                    }
+                    // Mode Switcher
+                    GlassSegmentedTabs(
+                        options = listOf("Prompt", "Reference Song"),
+                        selectedIndex = searchMode,
+                        onSelect = { searchMode = it },
+                    )
                     Spacer(modifier = Modifier.height(16.dp))
 
                     // Inputs
@@ -151,18 +147,11 @@ fun DiscoverView(context: ViewContext) {
                     Spacer(modifier = Modifier.height(16.dp))
 
                     // Limit Mode Switcher
-                    TabRow(selectedTabIndex = limitMode) {
-                        Tab(
-                            selected = limitMode == 0,
-                            onClick = { limitMode = 0 },
-                            text = { Text("Limit by Count") }
-                        )
-                        Tab(
-                            selected = limitMode == 1,
-                            onClick = { limitMode = 1 },
-                            text = { Text("Limit by Similarity") }
-                        )
-                    }
+                    GlassSegmentedTabs(
+                        options = listOf("By Count", "By Similarity"),
+                        selectedIndex = limitMode,
+                        onSelect = { limitMode = it },
+                    )
                     Spacer(modifier = Modifier.height(16.dp))
 
                     // Sliders
@@ -316,4 +305,55 @@ fun DiscoverView(context: ViewContext) {
                 }
             )
         }
+}
+
+@Composable
+private fun GlassSegmentedTabs(
+    options: List<String>,
+    selectedIndex: Int,
+    onSelect: (Int) -> Unit,
+) {
+    GlassSurface(
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(48.dp),
+        shape = RoundedCornerShape(50),
+    ) {
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(5.dp),
+        ) {
+            options.forEachIndexed { index, label ->
+                val selected = index == selectedIndex
+                val bgColor by animateColorAsState(
+                    targetValue = when {
+                        selected -> MaterialTheme.colorScheme.onSurface.copy(alpha = 0.16f)
+                        else -> Color.Transparent
+                    },
+                    label = "segment-bg",
+                )
+                Box(
+                    contentAlignment = Alignment.Center,
+                    modifier = Modifier
+                        .weight(1f)
+                        .fillMaxHeight()
+                        .clip(RoundedCornerShape(50))
+                        .background(bgColor)
+                        .clickable { onSelect(index) },
+                ) {
+                    Text(
+                        label,
+                        style = MaterialTheme.typography.labelLarge,
+                        color = when {
+                            selected -> MaterialTheme.colorScheme.onSurface
+                            else -> MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f)
+                        },
+                        maxLines = 1,
+                    )
+                }
+            }
+        }
+    }
 }
