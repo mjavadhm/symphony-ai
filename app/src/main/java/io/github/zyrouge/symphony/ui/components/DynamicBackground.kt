@@ -32,6 +32,7 @@ import androidx.compose.ui.unit.dp
 import androidx.palette.graphics.Palette
 import coil.compose.AsyncImage
 import coil.imageLoader
+import coil.request.ImageRequest
 import dev.chrisbanes.haze.hazeSource
 import io.github.zyrouge.symphony.services.groove.Song
 import io.github.zyrouge.symphony.ui.helpers.ViewContext
@@ -185,6 +186,57 @@ fun HomeDynamicBackground(
             } ?: Box(modifier = Modifier.fillMaxSize())
         }
         // اسکریم قوی از رنگ تم — پایین تیرهتر که پیلها بیشتر «شیشه» دیده بشن
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .background(
+                    Brush.verticalGradient(
+                        colors = listOf(
+                            surface.copy(alpha = 0.72f),
+                            surface.copy(alpha = 0.8f),
+                            surface.copy(alpha = 0.88f),
+                        )
+                    )
+                )
+        )
+    }
+}
+
+/**
+ * پسزمینهی داینامیک برای صفحات جزئیات —
+ * کاور خود آلبوم/آرتیست بلور میشه (نه آهنگ در حال پخش).
+ */
+@Composable
+fun ArtworkDynamicBackground(
+    image: ImageRequest?,
+    modifier: Modifier = Modifier,
+) {
+    val surface = MaterialTheme.colorScheme.surface
+
+    Box(
+        modifier = modifier
+            .fillMaxSize()
+            .background(surface)
+            .hazeSource(state = LocalHazeState.current)
+    ) {
+        image?.let {
+            AsyncImage(
+                it,
+                null,
+                contentScale = ContentScale.Crop,
+                colorFilter = ColorFilter.colorMatrix(
+                    ColorMatrix().apply { setToSaturation(1.4f) }
+                ),
+                modifier = Modifier
+                    .fillMaxSize()
+                    .graphicsLayer {
+                        scaleX = 1.3f
+                        scaleY = 1.3f
+                        alpha = 0.5f
+                    }
+                    .blur(100.dp)
+            )
+        }
         Box(
             modifier = Modifier
                 .fillMaxSize()
