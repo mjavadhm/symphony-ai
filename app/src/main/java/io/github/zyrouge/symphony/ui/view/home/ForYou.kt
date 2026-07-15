@@ -58,7 +58,9 @@ import io.github.zyrouge.symphony.ui.view.ArtistViewRoute
 import io.github.zyrouge.symphony.utils.randomSubList
 import io.github.zyrouge.symphony.utils.runIfOrDefault
 import io.github.zyrouge.symphony.utils.subListNonStrict
-
+import dev.chrisbanes.haze.hazeSource
+import io.github.zyrouge.symphony.ui.components.LocalHazeState
+import io.github.zyrouge.symphony.ui.components.LocalHomeContentPadding
 enum class ForYou(val label: (context: ViewContext) -> String) {
     Albums(label = { it.symphony.t.SuggestedAlbums }),
     Artists(label = { it.symphony.t.SuggestedArtists }),
@@ -124,7 +126,13 @@ fun ForYouView(context: ViewContext) {
                 }
             }
 
-            Column(modifier = Modifier.verticalScroll(rememberScrollState())) {
+            Column(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .hazeSource(state = LocalHazeState.current, zIndex = 1f)
+                    .verticalScroll(rememberScrollState())
+                    .padding(LocalHomeContentPadding.current),
+            ) {
                 Row(modifier = Modifier.padding(20.dp, 0.dp)) {
                     Box(modifier = Modifier.weight(1f)) {
                         ForYouButton(

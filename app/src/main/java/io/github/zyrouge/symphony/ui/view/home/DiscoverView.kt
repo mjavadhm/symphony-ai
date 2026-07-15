@@ -19,6 +19,7 @@ import io.github.zyrouge.symphony.ui.components.*
 import io.github.zyrouge.symphony.ui.helpers.ViewContext
 import kotlinx.coroutines.launch
 import io.github.zyrouge.symphony.services.groove.Song
+import dev.chrisbanes.haze.hazeSource
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -51,27 +52,13 @@ fun DiscoverView(context: ViewContext) {
         else allSongs.filter { it.title.contains(songSearchQuery, ignoreCase = true) || it.artists.any { a -> a.contains(songSearchQuery, ignoreCase = true) } }.take(5)
     }
 
-    Scaffold(
-        modifier = Modifier.fillMaxSize(),
-        topBar = {
-            CenterAlignedTopAppBar(
-                title = {
-                    TopAppBarMinimalTitle {
-                        Text("AI Discover")
-                    }
-                },
-                colors = TopAppBarDefaults.centerAlignedTopAppBarColors(
-                    containerColor = Color.Transparent
-                )
-            )
-        }
-    ) { contentPadding ->
-        LazyColumn(
-            modifier = Modifier
-                .padding(contentPadding)
-                .fillMaxSize()
-                .padding(horizontal = 16.dp)
-        ) {
+    LazyColumn(
+        modifier = Modifier
+            .fillMaxSize()
+            .hazeSource(state = LocalHazeState.current, zIndex = 1f)
+            .padding(horizontal = 16.dp),
+        contentPadding = LocalHomeContentPadding.current,
+    ) {
             item {
                 IndexingStatusBanner(context)
             }
@@ -329,5 +316,4 @@ fun DiscoverView(context: ViewContext) {
                 }
             )
         }
-    }
 }

@@ -49,7 +49,9 @@ import io.github.zyrouge.symphony.ui.view.nowPlaying.defaultHorizontalPadding
 import io.github.zyrouge.symphony.utils.SimpleFileSystem
 import io.github.zyrouge.symphony.utils.StringListUtils
 import java.util.Stack
-
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.runtime.CompositionLocalProvider
+import io.github.zyrouge.symphony.ui.components.LocalHomeContentPadding
 @Composable
 fun FoldersView(context: ViewContext) {
     val isUpdating by context.symphony.groove.song.isUpdating.collectAsState()
@@ -110,12 +112,13 @@ fun FoldersView(context: ViewContext) {
                     }
                 }
 
+                val homeContentPadding = LocalHomeContentPadding.current
                 Column {
                     Column(
                         modifier = Modifier.padding(
                             start = defaultHorizontalPadding,
                             end = defaultHorizontalPadding,
-                            top = 4.dp,
+                            top = homeContentPadding.calculateTopPadding() + 4.dp,
                             bottom = 12.dp,
                         ),
                     ) {
@@ -130,7 +133,13 @@ fun FoldersView(context: ViewContext) {
                         Text(folder.name, style = MaterialTheme.typography.bodyLarge)
                     }
                     HorizontalDivider()
-                    SongList(context, songIds = songIds, songsCount = songIds.size)
+                    CompositionLocalProvider(
+                        LocalHomeContentPadding provides PaddingValues(
+                            bottom = homeContentPadding.calculateBottomPadding(),
+                        )
+                    ) {
+                        SongList(context, songIds = songIds, songsCount = songIds.size)
+                    }
                 }
             } else {
                 FoldersGrid(

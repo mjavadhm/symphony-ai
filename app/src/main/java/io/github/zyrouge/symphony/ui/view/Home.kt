@@ -225,21 +225,9 @@ fun HomeView(context: ViewContext) {
                         .togetherWith(ScaleTransition.scaleDown.exitTransition())
                 },
             ) { page ->
-                val edgeToEdge = when (page) {
-                    HomePage.Songs, HomePage.Albums, HomePage.Artists,
-                    HomePage.AlbumArtists, HomePage.Genres, HomePage.Playlists -> true
-
-                    else -> false
-                }
-
                 CompositionLocalProvider(LocalHomeContentPadding provides contentPadding) {
                     Box(
-                        modifier = when {
-                            edgeToEdge -> Modifier.fillMaxSize()
-                            else -> Modifier
-                                .padding(contentPadding)
-                                .fillMaxSize()
-                        }
+                        modifier = Modifier.fillMaxSize()
                     ) {
                         when (page) {
                     HomePage.ForYou -> ForYouView(context)

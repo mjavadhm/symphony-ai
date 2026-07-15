@@ -60,6 +60,7 @@ import io.github.zyrouge.symphony.services.radio.Radio
 import io.github.zyrouge.symphony.ui.helpers.ViewContext
 import io.github.zyrouge.symphony.utils.SimplePath
 import io.github.zyrouge.symphony.utils.StringListUtils
+import dev.chrisbanes.haze.hazeSource
 
 @Composable
 fun SongTreeList(
@@ -171,7 +172,10 @@ fun SongTreeListContent(
 
     LazyColumn(
         state = lazyListState,
-        modifier = Modifier.drawScrollBar(lazyListState),
+        contentPadding = LocalHomeContentPadding.current,
+        modifier = Modifier
+            .drawScrollBar(lazyListState)
+            .hazeSource(state = LocalHazeState.current, zIndex = 1f),
     ) {
         tree.forEach { (dirname, childSongIds) ->
             val show = !disabled.contains(dirname)

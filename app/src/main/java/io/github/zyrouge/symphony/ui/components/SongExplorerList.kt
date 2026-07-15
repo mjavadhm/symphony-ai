@@ -53,6 +53,8 @@ import io.github.zyrouge.symphony.ui.helpers.ViewContext
 import io.github.zyrouge.symphony.ui.helpers.navigateToFolder
 import io.github.zyrouge.symphony.utils.SimpleFileSystem
 import io.github.zyrouge.symphony.utils.SimplePath
+import androidx.compose.foundation.layout.Box
+import dev.chrisbanes.haze.hazeSource
 
 private data class SongExplorerResult(
     val folders: List<SimpleFileSystem.Folder>,
@@ -115,12 +117,20 @@ fun SongExplorerList(
     MediaSortBarScaffold(
         mediaSortBar = {
             Column(modifier = Modifier.wrapContentHeight()) {
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    modifier = Modifier
-                        .horizontalScroll(currentPathScrollState)
-                        .padding(12.dp, 0.dp),
-                ) {
+                Box(modifier = Modifier.padding(horizontal = 14.dp)) {
+                    GlassSurface(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(44.dp),
+                        shape = RoundedCornerShape(50),
+                    ) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .horizontalScroll(currentPathScrollState)
+                                .padding(12.dp, 0.dp),
+                        ) {
                     currentPath.parts.mapIndexed { i, basename ->
                         Text(
                             basename,
@@ -145,10 +155,9 @@ fun SongExplorerList(
                                     .alpha(0.3f),
                             )
                         }
+                        }
                     }
                 }
-                Spacer(modifier = Modifier.height(12.dp))
-                HorizontalDivider()
                 MediaSortBar(
                     context,
                     reverse = sortReverse,
@@ -196,7 +205,10 @@ fun SongExplorerList(
 
                     LazyColumn(
                         state = lazyListState,
-                        modifier = Modifier.drawScrollBar(lazyListState),
+                        contentPadding = LocalHomeContentPadding.current,
+                        modifier = Modifier
+                            .drawScrollBar(lazyListState)
+                            .hazeSource(state = LocalHazeState.current, zIndex = 1f),
                     ) {
                         items(
                             sortedEntities.folders,
