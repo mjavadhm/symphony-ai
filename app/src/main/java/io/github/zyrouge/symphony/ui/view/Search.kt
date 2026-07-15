@@ -26,6 +26,7 @@ import androidx.compose.material.icons.filled.PriorityHigh
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
+import androidx.compose.material3.FilterChipDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -313,8 +314,7 @@ fun SearchView(context: ViewContext, route: SearchViewRoute) {
                             modifier = Modifier.horizontalScroll(chipsScrollState)
                         ) {
                             Spacer(modifier = Modifier.width(6.dp))
-                            FilterChip(
-                                shape = RoundedCornerShape(50),
+                            GlassFilterChip(
                                 selected = selectedChip == null && !isAiSearchSelected,
                                 label = {
                                     Text(context.symphony.t.All)
@@ -326,8 +326,7 @@ fun SearchView(context: ViewContext, route: SearchViewRoute) {
                                 }
                             )
                             if (showAiSearchTab) {
-                                FilterChip(
-                                    shape = RoundedCornerShape(50),
+                                GlassFilterChip(
                                     selected = isAiSearchSelected,
                                     label = {
                                         Text("AI Search")
@@ -340,8 +339,7 @@ fun SearchView(context: ViewContext, route: SearchViewRoute) {
                                 )
                             }
                             Groove.Kind.entries.map {
-                                FilterChip(
-                                    shape = RoundedCornerShape(50),
+                                GlassFilterChip(
                                     selected = selectedChip == it,
                                     label = {
                                         Text(it.label(context))
@@ -638,3 +636,28 @@ private fun Groove.Kind.label(context: ViewContext) = when (this) {
     Groove.Kind.GENRE -> context.symphony.t.Genres
     Groove.Kind.PLAYLIST -> context.symphony.t.Playlists
 }
+
+@Composable
+private fun GlassFilterChip(
+    selected: Boolean,
+    label: @Composable () -> Unit,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    GlassSurface(
+        modifier = modifier,
+        shape = RoundedCornerShape(50),
+    ) {
+        FilterChip(
+            selected = selected,
+            label = label,
+            onClick = onClick,
+            shape = RoundedCornerShape(50),
+            border = null,
+            colors = FilterChipDefaults.filterChipColors(
+                containerColor = Color.Transparent,
+            ),
+        )
+    }
+}
+
