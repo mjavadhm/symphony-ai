@@ -3,6 +3,7 @@ package io.github.zyrouge.symphony.ui.components
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -24,7 +25,6 @@ import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.MusicNote
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
-import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -46,6 +46,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import dev.chrisbanes.haze.hazeSource
 import io.github.zyrouge.symphony.services.groove.Groove
 import io.github.zyrouge.symphony.services.groove.repositories.SongRepository
 import io.github.zyrouge.symphony.services.radio.Radio
@@ -53,8 +54,6 @@ import io.github.zyrouge.symphony.ui.helpers.ViewContext
 import io.github.zyrouge.symphony.ui.helpers.navigateToFolder
 import io.github.zyrouge.symphony.utils.SimpleFileSystem
 import io.github.zyrouge.symphony.utils.SimplePath
-import androidx.compose.foundation.layout.Box
-import dev.chrisbanes.haze.hazeSource
 
 private data class SongExplorerResult(
     val folders: List<SimpleFileSystem.Folder>,
@@ -86,7 +85,7 @@ fun SongExplorerList(
                     val sorted = when (sortBy) {
                         SongRepository.SortBy.TITLE,
                         SongRepository.SortBy.FILENAME,
-                            -> categorized.folders.sortedBy { it.name }
+                        -> categorized.folders.sortedBy { it.name }
 
                         else -> categorized.folders
                     }
@@ -131,30 +130,31 @@ fun SongExplorerList(
                                 .horizontalScroll(currentPathScrollState)
                                 .padding(12.dp, 0.dp),
                         ) {
-                    currentPath.parts.mapIndexed { i, basename ->
-                        Text(
-                            basename,
-                            style = MaterialTheme.typography.bodyMedium,
-                            modifier = Modifier
-                                .clip(RoundedCornerShape(4.dp))
-                                .clickable {
-                                    val path = SimplePath(currentPath.parts.subList(1, i + 1))
-                                    explorer
-                                        .navigateToFolder(path)
-                                        ?.let {
-                                            currentFolder = it
+                            currentPath.parts.mapIndexed { i, basename ->
+                                Text(
+                                    basename,
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    modifier = Modifier
+                                        .clip(RoundedCornerShape(4.dp))
+                                        .clickable {
+                                            val path = SimplePath(currentPath.parts.subList(1, i + 1))
+                                            explorer
+                                                .navigateToFolder(path)
+                                                ?.let {
+                                                    currentFolder = it
+                                                }
                                         }
+                                        .padding(8.dp, 4.dp),
+                                )
+                                if (i != currentPath.size - 1) {
+                                    Text(
+                                        "/",
+                                        modifier = Modifier
+                                            .padding(4.dp, 0.dp)
+                                            .alpha(0.3f),
+                                    )
                                 }
-                                .padding(8.dp, 4.dp),
-                        )
-                        if (i != currentPath.size - 1) {
-                            Text(
-                                "/",
-                                modifier = Modifier
-                                    .padding(4.dp, 0.dp)
-                                    .alpha(0.3f),
-                            )
-                        }
+                            }
                         }
                     }
                 }
