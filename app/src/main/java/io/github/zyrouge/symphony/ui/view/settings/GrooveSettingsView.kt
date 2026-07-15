@@ -46,9 +46,11 @@ import androidx.compose.ui.graphics.Color
 import io.github.zyrouge.symphony.Symphony
 import io.github.zyrouge.symphony.services.groove.Groove
 import io.github.zyrouge.symphony.ui.components.AdaptiveSnackbar
+import dev.chrisbanes.haze.hazeSource
+import io.github.zyrouge.symphony.ui.components.GlassSettingsScaffold
 import io.github.zyrouge.symphony.ui.components.IconButtonPlaceholder
+import io.github.zyrouge.symphony.ui.components.LocalHazeState
 import io.github.zyrouge.symphony.ui.components.TopAppBarMinimalTitle
-import io.github.zyrouge.symphony.ui.components.settings.ConsiderContributingTile
 import io.github.zyrouge.symphony.ui.components.settings.SettingsMultiGrooveFolderTile
 import io.github.zyrouge.symphony.ui.components.settings.SettingsMultiSystemFolderTile
 import io.github.zyrouge.symphony.ui.components.settings.SettingsMultiTextOptionTile
@@ -87,48 +89,27 @@ fun GrooveSettingsView(context: ViewContext, route: GrooveSettingsViewRoute) {
     val caseSensitiveSorting by context.symphony.settings.caseSensitiveSorting.flow.collectAsState()
     val useMetaphony by context.symphony.settings.useMetaphony.flow.collectAsState()
 
-    Scaffold(
-        modifier = Modifier.fillMaxSize(),
+    GlassSettingsScaffold(
+        context = context,
+        title = "${context.symphony.t.Settings} - ${context.symphony.t.Groove}",
         snackbarHost = {
             SnackbarHost(snackbarHostState) {
                 AdaptiveSnackbar(it)
             }
         },
-        topBar = {
-            CenterAlignedTopAppBar(
-                title = {
-                    TopAppBarMinimalTitle {
-                        Text("${context.symphony.t.Settings} - ${context.symphony.t.Groove}")
-                    }
-                },
-                colors = TopAppBarDefaults.centerAlignedTopAppBarColors(
-                    containerColor = Color.Transparent,
-                ),
-                navigationIcon = {
-                    IconButton(
-                        onClick = {
-                            context.navController.popBackStack()
-                        }
-                    ) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, null)
-                    }
-                },
-                actions = {
-                    IconButtonPlaceholder()
-                },
-            )
-        },
         content = { contentPadding ->
             Box(
-                modifier = Modifier
-                    .padding(contentPadding)
-                    .fillMaxSize()
+                modifier = Modifier.fillMaxSize()
             ) {
-                Column(modifier = Modifier.verticalScroll(scrollState)) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .hazeSource(state = LocalHazeState.current, zIndex = 1f)
+                        .verticalScroll(scrollState)
+                        .padding(contentPadding)
+                ) {
                     val defaultSongsFilterPattern = ".*"
                     val minSongDurationRange = 0f..60f
-
-                    ConsiderContributingTile(context)
                     SettingsSideHeading(context.symphony.t.Groove)
                     SpotlightTile(route.initialElement == SettingsViewRoute.ELEMENT_MEDIA_FOLDERS) {
                         SettingsMultiSystemFolderTile(

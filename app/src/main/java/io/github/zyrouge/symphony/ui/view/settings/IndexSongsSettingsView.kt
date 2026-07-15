@@ -86,29 +86,13 @@ fun IndexSongsSettingsView(context: ViewContext) {
         wasActive = indexingState.isActive
     }
 
-    Scaffold(
-        modifier = Modifier.fillMaxSize(),
+    GlassSettingsScaffold(
+        context = context,
+        title = "Manage AI Index",
         snackbarHost = {
             SnackbarHost(snackbarHostState) {
                 AdaptiveSnackbar(it)
             }
-        },
-        topBar = {
-            CenterAlignedTopAppBar(
-                title = {
-                    TopAppBarMinimalTitle {
-                        Text("Manage AI Index")
-                    }
-                },
-                navigationIcon = {
-                    IconButton(onClick = { context.navController.popBackStack() }) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, null)
-                    }
-                },
-                colors = TopAppBarDefaults.centerAlignedTopAppBarColors(
-                    containerColor = Color.Transparent
-                )
-            )
         },
         floatingActionButton = {
             if (!indexingState.isActive && selectedSongs.isNotEmpty()) {

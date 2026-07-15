@@ -36,7 +36,10 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import io.github.zyrouge.symphony.ui.components.AdaptiveSnackbar
+import dev.chrisbanes.haze.hazeSource
+import io.github.zyrouge.symphony.ui.components.GlassSettingsScaffold
 import io.github.zyrouge.symphony.ui.components.IconButtonPlaceholder
+import io.github.zyrouge.symphony.ui.components.LocalHazeState
 import io.github.zyrouge.symphony.ui.components.TopAppBarMinimalTitle
 import io.github.zyrouge.symphony.ui.components.settings.SettingsSideHeading
 import io.github.zyrouge.symphony.ui.components.settings.SettingsSwitchTile
@@ -107,44 +110,25 @@ fun SemanticSearchSettingsView(context: ViewContext) {
         uri?.let { context.symphony.semanticSearch.startJsonExport(it) }
     }
 
-    Scaffold(
-        modifier = Modifier.fillMaxSize(),
+    GlassSettingsScaffold(
+        context = context,
+        title = "${context.symphony.t.Settings} - AI Search",
         snackbarHost = {
             SnackbarHost(snackbarHostState) {
                 AdaptiveSnackbar(it)
             }
         },
-        topBar = {
-            CenterAlignedTopAppBar(
-                title = {
-                    TopAppBarMinimalTitle {
-                        Text("${context.symphony.t.Settings} - AI Search")
-                    }
-                },
-                colors = TopAppBarDefaults.centerAlignedTopAppBarColors(
-                    containerColor = Color.Transparent
-                ),
-                navigationIcon = {
-                    IconButton(
-                        onClick = {
-                            context.navController.popBackStack()
-                        }
-                    ) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, null)
-                    }
-                },
-                actions = {
-                    IconButtonPlaceholder()
-                },
-            )
-        },
         content = { contentPadding ->
             Box(
-                modifier = Modifier
-                    .padding(contentPadding)
-                    .fillMaxSize()
+                modifier = Modifier.fillMaxSize()
             ) {
-                Column(modifier = Modifier.verticalScroll(scrollState)) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .hazeSource(state = LocalHazeState.current, zIndex = 1f)
+                        .verticalScroll(scrollState)
+                        .padding(contentPadding)
+                ) {
                     SettingsSideHeading("Symphony Search (AI)")
                     
                     SettingsSwitchTile(

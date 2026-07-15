@@ -28,9 +28,11 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import dev.chrisbanes.haze.hazeSource
+import io.github.zyrouge.symphony.ui.components.GlassSettingsScaffold
 import io.github.zyrouge.symphony.ui.components.IconButtonPlaceholder
+import io.github.zyrouge.symphony.ui.components.LocalHazeState
 import io.github.zyrouge.symphony.ui.components.TopAppBarMinimalTitle
-import io.github.zyrouge.symphony.ui.components.settings.ConsiderContributingTile
 import io.github.zyrouge.symphony.ui.components.settings.SettingsSideHeading
 import io.github.zyrouge.symphony.ui.components.settings.SettingsSliderTile
 import io.github.zyrouge.symphony.ui.components.settings.SettingsSwitchTile
@@ -55,42 +57,21 @@ fun PlayerSettingsView(context: ViewContext) {
     val seekForwardDuration by context.symphony.settings.seekForwardDuration.flow.collectAsState()
     val gaplessPlayback by context.symphony.settings.gaplessPlayback.flow.collectAsState()
 
-    Scaffold(
-        modifier = Modifier.fillMaxSize(),
-        topBar = {
-            CenterAlignedTopAppBar(
-                title = {
-                    TopAppBarMinimalTitle {
-                        Text("${context.symphony.t.Settings} - ${context.symphony.t.Player}")
-                    }
-                },
-                colors = TopAppBarDefaults.centerAlignedTopAppBarColors(
-                    containerColor = Color.Transparent
-                ),
-                navigationIcon = {
-                    IconButton(
-                        onClick = {
-                            context.navController.popBackStack()
-                        }
-                    ) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, null)
-                    }
-                },
-                actions = {
-                    IconButtonPlaceholder()
-                },
-            )
-        },
+    GlassSettingsScaffold(
+        context = context,
+        title = "${context.symphony.t.Settings} - ${context.symphony.t.Player}",
         content = { contentPadding ->
             Box(
-                modifier = Modifier
-                    .padding(contentPadding)
-                    .fillMaxSize()
+                modifier = Modifier.fillMaxSize()
             ) {
-                Column(modifier = Modifier.verticalScroll(scrollState)) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .hazeSource(state = LocalHazeState.current, zIndex = 1f)
+                        .verticalScroll(scrollState)
+                        .padding(contentPadding)
+                ) {
                     val seekDurationRange = 3f..60f
-
-                    ConsiderContributingTile(context)
                     SettingsSideHeading(context.symphony.t.Player)
                     SettingsSwitchTile(
                         icon = {

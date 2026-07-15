@@ -29,9 +29,11 @@ import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import io.github.zyrouge.symphony.services.i18n.CommonTranslation
+import dev.chrisbanes.haze.hazeSource
+import io.github.zyrouge.symphony.ui.components.GlassSettingsScaffold
 import io.github.zyrouge.symphony.ui.components.IconButtonPlaceholder
+import io.github.zyrouge.symphony.ui.components.LocalHazeState
 import io.github.zyrouge.symphony.ui.components.TopAppBarMinimalTitle
-import io.github.zyrouge.symphony.ui.components.settings.ConsiderContributingTile
 import io.github.zyrouge.symphony.ui.components.settings.SettingsFloatInputTile
 import io.github.zyrouge.symphony.ui.components.settings.SettingsOptionTile
 import io.github.zyrouge.symphony.ui.components.settings.SettingsSideHeading
@@ -64,40 +66,20 @@ fun AppearanceSettingsView(context: ViewContext) {
     val fontScale by context.symphony.settings.fontScale.flow.collectAsState()
     val contentScale by context.symphony.settings.contentScale.flow.collectAsState()
 
-    Scaffold(
-        modifier = Modifier.fillMaxSize(),
-        topBar = {
-            CenterAlignedTopAppBar(
-                title = {
-                    TopAppBarMinimalTitle {
-                        Text("${context.symphony.t.Settings} - ${context.symphony.t.Appearance}")
-                    }
-                },
-                colors = TopAppBarDefaults.centerAlignedTopAppBarColors(
-                    containerColor = Color.Transparent
-                ),
-                navigationIcon = {
-                    IconButton(
-                        onClick = {
-                            context.navController.popBackStack()
-                        }
-                    ) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, null)
-                    }
-                },
-                actions = {
-                    IconButtonPlaceholder()
-                },
-            )
-        },
+    GlassSettingsScaffold(
+        context = context,
+        title = "${context.symphony.t.Settings} - ${context.symphony.t.Appearance}",
         content = { contentPadding ->
             Box(
-                modifier = Modifier
-                    .padding(contentPadding)
-                    .fillMaxSize()
+                modifier = Modifier.fillMaxSize()
             ) {
-                Column(modifier = Modifier.verticalScroll(scrollState)) {
-                    ConsiderContributingTile(context)
+                Column(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .hazeSource(state = LocalHazeState.current, zIndex = 1f)
+                        .verticalScroll(scrollState)
+                        .padding(contentPadding)
+                ) {
                     SettingsSideHeading(context.symphony.t.Appearance)
                     SettingsOptionTile(
                         icon = {

@@ -24,9 +24,11 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import dev.chrisbanes.haze.hazeSource
+import io.github.zyrouge.symphony.ui.components.GlassSettingsScaffold
 import io.github.zyrouge.symphony.ui.components.IconButtonPlaceholder
+import io.github.zyrouge.symphony.ui.components.LocalHazeState
 import io.github.zyrouge.symphony.ui.components.TopAppBarMinimalTitle
-import io.github.zyrouge.symphony.ui.components.settings.ConsiderContributingTile
 import io.github.zyrouge.symphony.ui.components.settings.SettingsMultiOptionTile
 import io.github.zyrouge.symphony.ui.components.settings.SettingsOptionTile
 import io.github.zyrouge.symphony.ui.components.settings.SettingsSideHeading
@@ -47,40 +49,20 @@ fun HomePageSettingsView(context: ViewContext) {
     val forYouContents by context.symphony.settings.forYouContents.flow.collectAsState()
     val homePageBottomBarLabelVisibility by context.symphony.settings.homePageBottomBarLabelVisibility.flow.collectAsState()
 
-    Scaffold(
-        modifier = Modifier.fillMaxSize(),
-        topBar = {
-            CenterAlignedTopAppBar(
-                title = {
-                    TopAppBarMinimalTitle {
-                        Text("${context.symphony.t.Settings} - ${context.symphony.t.Home}")
-                    }
-                },
-                colors = TopAppBarDefaults.centerAlignedTopAppBarColors(
-                    containerColor = Color.Transparent
-                ),
-                navigationIcon = {
-                    IconButton(
-                        onClick = {
-                            context.navController.popBackStack()
-                        }
-                    ) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, null)
-                    }
-                },
-                actions = {
-                    IconButtonPlaceholder()
-                },
-            )
-        },
+    GlassSettingsScaffold(
+        context = context,
+        title = "${context.symphony.t.Settings} - ${context.symphony.t.Home}",
         content = { contentPadding ->
             Box(
-                modifier = Modifier
-                    .padding(contentPadding)
-                    .fillMaxSize()
+                modifier = Modifier.fillMaxSize()
             ) {
-                Column(modifier = Modifier.verticalScroll(scrollState)) {
-                    ConsiderContributingTile(context)
+                Column(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .hazeSource(state = LocalHazeState.current, zIndex = 1f)
+                        .verticalScroll(scrollState)
+                        .padding(contentPadding)
+                ) {
                     SettingsSideHeading(context.symphony.t.Home)
                     SettingsMultiOptionTile(
                         context,

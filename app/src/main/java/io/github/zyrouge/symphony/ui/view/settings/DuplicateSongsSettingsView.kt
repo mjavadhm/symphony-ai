@@ -16,6 +16,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import io.github.zyrouge.symphony.services.groove.Song
+import io.github.zyrouge.symphony.ui.components.GlassSettingsScaffold
 import io.github.zyrouge.symphony.ui.components.TopAppBarMinimalTitle
 import io.github.zyrouge.symphony.ui.helpers.ViewContext
 import io.github.zyrouge.symphony.utils.DocumentFileX
@@ -53,25 +54,9 @@ fun DuplicateSongsSettingsView(context: ViewContext) {
 
     val selectedSongs = remember { mutableStateMapOf<String, Boolean>() }
 
-    Scaffold(
-        modifier = Modifier.fillMaxSize(),
-        topBar = {
-            CenterAlignedTopAppBar(
-                title = {
-                    TopAppBarMinimalTitle {
-                        Text("${context.symphony.t.Settings} - Find Duplicates")
-                    }
-                },
-                colors = TopAppBarDefaults.centerAlignedTopAppBarColors(
-                    containerColor = Color.Transparent,
-                ),
-                navigationIcon = {
-                    IconButton(onClick = { context.navController.popBackStack() }) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, null)
-                    }
-                }
-            )
-        },
+    GlassSettingsScaffold(
+        context = context,
+        title = "${context.symphony.t.Settings} - Find Duplicates",
         floatingActionButton = {
             val selectedCount = selectedSongs.values.count { it }
             if (selectedCount > 0) {
