@@ -1,6 +1,8 @@
 package io.github.zyrouge.symphony.ui.view.nowPlaying
 
+import android.view.HapticFeedbackConstants
 import androidx.compose.animation.AnimatedContent
+import androidx.compose.ui.platform.LocalView
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.spring
@@ -134,6 +136,7 @@ private fun NowPlayingBodyCoverArtwork(
     modifier: Modifier = Modifier,
 ) {
     BoxWithConstraints {
+        val view = LocalView.current
         val dimension = min(this@BoxWithConstraints.maxHeight, this@BoxWithConstraints.maxWidth)
 
         val playScale by animateFloatAsState(
@@ -184,13 +187,19 @@ private fun NowPlayingBodyCoverArtwork(
                             minimumDragAmount = 100f,
                             onSwipeLeft = {
                                 if (context.symphony.radio.canJumpToNext()) {
+                                    view.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
                                     context.symphony.radio.jumpToNext()
                                 }
                             },
                             onSwipeRight = {
                                 if (context.symphony.radio.canJumpToPrevious()) {
+                                    view.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
                                     context.symphony.radio.jumpToPrevious()
                                 }
+                            },
+                            onSwipeDown = {
+                                view.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
+                                context.navController.popBackStack()
                             },
                         )
                         .pointerInput(Unit) {

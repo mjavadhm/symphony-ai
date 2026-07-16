@@ -1,6 +1,8 @@
 package io.github.zyrouge.symphony.ui.view.nowPlaying
 
+import android.view.HapticFeedbackConstants
 import androidx.compose.animation.AnimatedContent
+import androidx.compose.ui.platform.LocalView
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.animateFloatAsState
@@ -147,9 +149,11 @@ fun NowPlayingBodyContent(
                     }
                 }
                 Row {
+                    val view = LocalView.current
                     IconButton(
                         modifier = Modifier.offset(4.dp),
                         onClick = {
+                            view.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
                             context.symphony.groove.playlist.run {
                                 when {
                                     isFavorite -> unfavorite(song.id)
@@ -321,8 +325,10 @@ fun NowPlayingTraditionalControls(context: ViewContext, data: NowPlayingData) {
 
 @Composable
 private fun NowPlayingShuffleButton(context: ViewContext, data: NowPlayingData) {
+    val view = LocalView.current
     IconButton(
         onClick = {
+            view.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
             context.symphony.radio.queue.toggleShuffleMode()
         }
     ) {
@@ -340,8 +346,10 @@ private fun NowPlayingShuffleButton(context: ViewContext, data: NowPlayingData) 
 
 @Composable
 private fun NowPlayingLoopButton(context: ViewContext, data: NowPlayingData) {
+    val view = LocalView.current
     IconButton(
         onClick = {
+            view.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
             context.symphony.radio.queue.toggleLoopMode()
         }
     ) {
@@ -414,6 +422,7 @@ private fun NowPlayingSeekBar(
     val thumbSize = 14.dp
     val thumbSizeHalf = thumbSize.div(2)
 
+    val view = LocalView.current
     var dragging by remember { mutableStateOf(false) }
     var dragRatio by remember { mutableFloatStateOf(0f) }
 
@@ -457,6 +466,7 @@ private fun NowPlayingSeekBar(
                             onSeekStart()
                         },
                         onDragEnd = {
+                            view.performHapticFeedback(HapticFeedbackConstants.CLOCK_TICK)
                             onSeekEnd(dragRatio)
                             offsetX = 0f
                             dragging = false
@@ -676,13 +686,18 @@ private fun NowPlayingControlButton(
         NowPlayingControlButtonSize.Large -> 38.dp
     }
 
+    val view = LocalView.current
+
     IconButton(
         modifier = Modifier
             .scale(pressScale)
             .size(buttonSize)
             .background(backgroundColor, CircleShape),
         interactionSource = interactionSource,
-        onClick = onClick,
+        onClick = {
+            view.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
+            onClick()
+        },
     ) {
         // morph بین play و pause
         AnimatedContent(
