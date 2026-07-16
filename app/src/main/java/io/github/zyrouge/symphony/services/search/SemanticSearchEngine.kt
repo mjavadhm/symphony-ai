@@ -83,6 +83,10 @@ class SemanticSearchEngine(val symphony: Symphony) : Symphony.Hooks {
     var tokenizer: RobertaTokenizer? = null
         private set
 
+    private val melExtractor by lazy {
+        io.github.zyrouge.symphony.services.search.ml.MelSpectrogramExtractor()
+    }
+
     val modelManager = ModelManager(symphony.applicationContext)
 
     override fun onSymphonyReady() {
@@ -93,7 +97,9 @@ class SemanticSearchEngine(val symphony: Symphony) : Symphony.Hooks {
     }
 
     override fun onSymphonyDestroy() {
+        cancelIndexing()
         boxStore?.close()
+        if (activeInstance === this) activeInstance = null
     }
 
     fun initializeEngine() {
@@ -227,7 +233,6 @@ class SemanticSearchEngine(val symphony: Symphony) : Symphony.Hooks {
                 }
 
                 val decoder = io.github.zyrouge.symphony.services.search.ml.AudioDecoder(symphony.applicationContext)
-                val melExtractor = io.github.zyrouge.symphony.services.search.ml.MelSpectrogramExtractor()
 
                 // ✅ هر چانک: decode → mel → embed → دور انداختن PCM
                 // فقط امبدینگهای ۵۱۲تایی نگه داشته میشن (ناچیز)

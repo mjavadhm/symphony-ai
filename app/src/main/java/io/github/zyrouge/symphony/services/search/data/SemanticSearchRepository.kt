@@ -2,6 +2,7 @@ package io.github.zyrouge.symphony.services.search.data
 
 import io.objectbox.Box
 import io.objectbox.BoxStore
+import io.objectbox.query.QueryBuilder
 import kotlin.math.sqrt
 
 data class SearchResult(
@@ -15,36 +16,55 @@ class SemanticSearchRepository(boxStore: BoxStore) {
     private val trackBox: Box<TrackEntity> = boxStore.boxFor(TrackEntity::class.java)
     private val chunkBox: Box<TrackChunkEntity> = boxStore.boxFor(TrackChunkEntity::class.java)
 
+    companion object {
+        /** "Yesterday (Remastered 2009) " → "yesterday" */
+        fun normalizeKey(s: String): String = s
+            .lowercase()
+            .replace(Regex("[\\(\\[].*?[\\)\\]]"), "")
+            .replace(Regex("\\bfeat\\.?.*$"), "")
+            .replace(Regex("\\s+"), " ")
+            .trim()
+    }
+
+    @Volatile
     private var embeddedTracksCache: Set<String>? = null
 
-    fun isTrackEmbedded(title: String, artist: String, durationMs: Long): Boolean {
-        if (embeddedTracksCache == null) {
+    private fun getCache(): Set<String> {
+        embeddedTracksCache?.let { return it }
+        synchronized(this) {
+            embeddedTracksCache?.let { return it }
             val cache = mutableSetOf<String>()
-            val tracks = trackBox.all
-            for (track in tracks) {
-                val t = track.title?.lowercase() ?: ""
-                val a = track.artist?.lowercase() ?: ""
-                val d = track.durationSeconds
-                cache.add("$t|$a|$d")
+            for (track in trackBox.all) {
+                val t = normalizeKey(track.title ?: "")
+                val a = normalizeKey(track.artist ?: "")
+                cache.add("$t|$a|${track.durationSeconds}")
             }
             embeddedTracksCache = cache
+            return cache
         }
-        
-        val t = title.lowercase()
-        val a = artist.lowercase()
+    }
+
+    fun isTrackEmbedded(title: String, artist: String, durationMs: Long): Boolean {
+        val cache = getCache()
+        val t = normalizeKey(title)
+        val a = normalizeKey(artist)
         val d = (durationMs / 1000).toInt()
         
-        // Check with ±2 seconds tolerance
-        for (offset in -2..2) {
-            if (embeddedTracksCache?.contains("$t|$a|${d + offset}") == true) {
-                return true
-            }
+        // تلورانس ±۵ ثانیه برای نسخه‌های با کیفیت/منبع متفاوت
+        for (offset in -5..5) {
+            if (cache.contains("$t|$a|${d + offset}")) return true
         }
         return false
     }
 
     fun invalidateCache() {
         embeddedTracksCache = null
+    }
+
+    fun updateDevicePath(track: TrackEntity, devicePath: String) {
+        if (track.filePath == devicePath) return
+        track.filePath = devicePath
+        trackBox.put(track)
     }
 
     fun getIndexedTrackCount(): Long = trackBox.count()
@@ -54,6 +74,18 @@ class SemanticSearchRepository(boxStore: BoxStore) {
      */
     fun insertTrack(filePath: String, title: String, artist: String, durationSeconds: Int, chunkEmbeddings: List<FloatArray>) {
         if (chunkEmbeddings.isEmpty()) return
+
+        // ✅ حذف نسخه‌های قبلی همین ترک (جلوگیری از duplicate در re-index / import دوباره)
+        val existing = trackBox.query(
+            TrackEntity_.title.equal(title, QueryBuilder.StringOrder.CASE_INSENSITIVE)
+        ).build().find().filter { old ->
+            normalizeKey(old.artist ?: "") == normalizeKey(artist) &&
+            kotlin.math.abs(old.durationSeconds - durationSeconds) <= 2
+        }
+        for (old in existing) {
+            chunkBox.remove(old.chunks)   // اول چانک‌ها، بعد خود ترک
+            trackBox.remove(old)
+        }
 
         // ✅ اول تک‌تک چانک‌ها normalize میشن (فیکس باگ maxScore)
         val normalizedChunks = chunkEmbeddings.map { normalize(it) }
@@ -101,27 +133,24 @@ class SemanticSearchRepository(boxStore: BoxStore) {
             TrackChunkEntity_.embedding.nearestNeighbors(queryEmbedding, 200)
         ).build().find()
 
-        // 2. Extract unique Tracks from candidates
-        val candidateTracks = candidateChunks.mapNotNull { it.track.target }.distinctBy { it.id }
+        // ✅ گروه‌بندی چانک‌های کاندید بر اساس ترک — بدون لود کردن بقیه چانک‌های هر ترک
+        val chunksByTrack = candidateChunks.groupBy { it.track.targetId }
 
-        // 3. Calculate scores exactly as in Python test.py
         val results = mutableListOf<SearchResult>()
-        for (track in candidateTracks) {
-            val trackChunks = track.chunks
-            if (trackChunks.isEmpty()) continue
-            
-            val similarities = trackChunks.map { chunk ->
-                if (chunk.embedding != null) cosineSimilarity(queryEmbedding, chunk.embedding!!) else 0f
+        for ((_, chunks) in chunksByTrack) {
+            val track = chunks.first().track.target ?: continue
+            val similarities = chunks.mapNotNull { c ->
+                c.embedding?.let { cosineSimilarity(queryEmbedding, it) }
             }
-            
+            if (similarities.isEmpty()) continue
+
             val sorted = similarities.sortedDescending()
-            val maxScore = sorted.firstOrNull() ?: 0f
-            // میانگین «نمره‌ی» ۳ چانک برتر — نه میانگین بردار
+            val maxScore = sorted.first()
             val top3 = sorted.take(3)
-            val top3Mean = if (top3.isEmpty()) 0f else top3.sum() / top3.size
-            val meanScore = if (track.meanEmbedding != null) cosineSimilarity(queryEmbedding, track.meanEmbedding!!) else 0f
+            val top3Mean = top3.sum() / top3.size
+            val meanScore = track.meanEmbedding?.let { cosineSimilarity(queryEmbedding, it) } ?: 0f
             val hybridScore = 0.5f * top3Mean + 0.3f * meanScore + 0.2f * maxScore
-            
+
             results.add(SearchResult(track, hybridScore, maxScore, meanScore))
         }
 
@@ -146,17 +175,16 @@ class SemanticSearchRepository(boxStore: BoxStore) {
         toleranceSeconds: Int = 2
     ): List<SearchResult> {
         // پیدا کردن ترک مبدأ با متادیتا — اسکن سبکه (بدون عملیات برداری)
-        val sourceTrack = trackBox.all.find { track ->
-            val titleMatch = track.title?.equals(title, ignoreCase = true) == true
+        val sourceTrack = trackBox.query(
+            TrackEntity_.title.equal(title, QueryBuilder.StringOrder.CASE_INSENSITIVE)
+        ).build().find().find { track ->
             val artistMatch = if (artist.isNotEmpty() && !track.artist.isNullOrEmpty()) {
-                track.artist!!.equals(artist, ignoreCase = true) ||
+                normalizeKey(track.artist!!) == normalizeKey(artist) ||
                 track.artist!!.contains(artist, ignoreCase = true) ||
                 artist.contains(track.artist!!, ignoreCase = true)
-            } else {
-                true
-            }
+            } else true
             val durationMatch = kotlin.math.abs(track.durationSeconds - durationSeconds) <= toleranceSeconds
-            titleMatch && artistMatch && durationMatch
+            artistMatch && durationMatch
         } ?: return emptyList()
 
         val sourceEmbedding = sourceTrack.meanEmbedding ?: return emptyList()
