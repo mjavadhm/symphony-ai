@@ -11,6 +11,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Shape
+import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import dev.chrisbanes.haze.HazeState
@@ -44,6 +45,11 @@ fun GlassSurface(
 ) {
     val hazeState = LocalHazeState.current
     val surface = MaterialTheme.colorScheme.surface
+    // تو تم روشن شیشه باید شیریتر باشه تا متن تیره روش خوانا بمونه
+    val effectiveTintAlpha = when {
+        surface.luminance() > 0.5f -> (tintAlpha + 0.2f).coerceAtMost(1f)
+        else -> tintAlpha
+    }
 
     Box(
         modifier = modifier
@@ -52,7 +58,7 @@ fun GlassSurface(
                 state = hazeState,
                 style = HazeStyle(
                     backgroundColor = surface,
-                    tint = HazeTint(surface.copy(alpha = tintAlpha)),
+                    tint = HazeTint(surface.copy(alpha = effectiveTintAlpha)),
                     blurRadius = blurRadius,
                 ),
             )
