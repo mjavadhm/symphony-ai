@@ -26,6 +26,7 @@ import androidx.compose.material.icons.filled.MusicNote
 import androidx.compose.material.icons.filled.Palette
 import androidx.compose.material.icons.filled.Radio
 import androidx.compose.material.icons.filled.Search
+import androidx.compose.material.icons.filled.SettingsBackupRestore
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -57,6 +58,7 @@ import io.github.zyrouge.symphony.ui.view.settings.MiniPlayerSettingsViewRoute
 import io.github.zyrouge.symphony.ui.view.settings.NowPlayingSettingsViewRoute
 import io.github.zyrouge.symphony.ui.view.settings.PlayerSettingsViewRoute
 import io.github.zyrouge.symphony.ui.view.settings.SemanticSearchSettingsViewRoute
+import io.github.zyrouge.symphony.ui.view.settings.BackupSettingsViewRoute
 import kotlinx.serialization.Serializable
 
 @Serializable
@@ -213,6 +215,14 @@ fun SettingsView(context: ViewContext, route: SettingsViewRoute) {
                                 title = { Text("AI Search") },
                                 onClick = {
                                     context.navController.navigate(SemanticSearchSettingsViewRoute)
+                                },
+                            )
+                            SettingsGlassDivider()
+                            SettingsSimpleTile(
+                                icon = { Icon(Icons.Filled.SettingsBackupRestore, null) },
+                                title = { Text("Backup & Restore") },
+                                onClick = {
+                                    context.navController.navigate(BackupSettingsViewRoute)
                                 },
                             )
                         }
