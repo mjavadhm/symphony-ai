@@ -4,10 +4,14 @@ import android.app.Activity
 import android.content.res.Configuration
 import android.os.Build
 import androidx.compose.foundation.isSystemInDarkTheme
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Shapes
 import androidx.compose.material3.dynamicDarkColorScheme
 import androidx.compose.material3.dynamicLightColorScheme
+import androidx.compose.material3.surfaceColorAtElevation
 import androidx.compose.runtime.Composable
+import androidx.compose.ui.unit.dp
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.collectAsState
@@ -86,8 +90,11 @@ fun SymphonyTheme(
     )
 
     MaterialTheme(
-        colorScheme = colorScheme,
+        colorScheme = colorScheme.copy(
+            surfaceContainer = colorScheme.surfaceColorAtElevation(6.dp),
+        ),
         typography = typography,
+        shapes = Shapes(extraSmall = RoundedCornerShape(20.dp)),
         content = {
             CompositionLocalProvider(
                 LocalDensity provides Density(
