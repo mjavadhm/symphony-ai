@@ -25,6 +25,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import io.github.zyrouge.symphony.services.groove.Song
+import io.github.zyrouge.symphony.ui.components.GlassChip
 import io.github.zyrouge.symphony.ui.components.GlassSettingsScaffold
 import io.github.zyrouge.symphony.ui.components.ScaffoldDialog
 import io.github.zyrouge.symphony.ui.helpers.ViewContext
@@ -184,17 +185,17 @@ fun DuplicateSongsSettingsView(context: ViewContext) {
                 modifier = Modifier.padding(horizontal = 16.dp),
                 horizontalArrangement = Arrangement.spacedBy(8.dp)
             ) {
-                FilterChip(
+                GlassChip(
                     selected = matchByTitle,
                     onClick = { matchByTitle = !matchByTitle },
                     label = { Text("Title") }
                 )
-                FilterChip(
+                GlassChip(
                     selected = matchByArtist,
                     onClick = { matchByArtist = !matchByArtist },
                     label = { Text("Artist") }
                 )
-                FilterChip(
+                GlassChip(
                     selected = matchByDuration,
                     onClick = { matchByDuration = !matchByDuration },
                     label = { Text("Duration") }
@@ -209,12 +210,12 @@ fun DuplicateSongsSettingsView(context: ViewContext) {
                 modifier = Modifier.padding(horizontal = 16.dp),
                 horizontalArrangement = Arrangement.spacedBy(8.dp)
             ) {
-                FilterChip(
+                GlassChip(
                     selected = preferProperNames,
                     onClick = { preferProperNames = !preferProperNames },
                     label = { Text("Skip junk names") }
                 )
-                FilterChip(
+                GlassChip(
                     selected = folderPriority.isNotEmpty(),
                     onClick = { showFolderPriorityDialog = true },
                     label = {

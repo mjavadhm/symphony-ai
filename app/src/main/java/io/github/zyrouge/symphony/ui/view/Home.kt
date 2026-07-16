@@ -67,6 +67,7 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.material3.rememberModalBottomSheetState
+import androidx.compose.material3.surfaceColorAtElevation
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.collectAsState
@@ -326,7 +327,8 @@ fun HomeView(context: ViewContext) {
 
         ModalBottomSheet(
             sheetState = sheetState,
-            containerColor = MaterialTheme.colorScheme.surface,
+            shape = RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp),
+            containerColor = MaterialTheme.colorScheme.surfaceColorAtElevation(4.dp),
             onDismissRequest = {
                 showTabsSheet = false
             },
@@ -354,7 +356,7 @@ fun HomeView(context: ViewContext) {
                         modifier = Modifier
                             .weight(1f)
                             .padding(2.dp, 0.dp)
-                            .clip(RoundedCornerShape(12.dp))
+                            .clip(RoundedCornerShape(16.dp))
                             .clickable {
                                 context.symphony.settings.lastHomeTab.setValue(x)
                                 showTabsSheet = false

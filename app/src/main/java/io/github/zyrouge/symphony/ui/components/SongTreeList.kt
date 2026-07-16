@@ -182,7 +182,7 @@ fun SongTreeListContent(
             val show = !disabled.contains(dirname)
             val sepPadding = if (show) 4.dp else 0.dp
 
-            stickyHeader {
+            item {
                 Box(modifier = Modifier.padding(bottom = sepPadding)) {
                     Row(
                         verticalAlignment = Alignment.CenterVertically,
