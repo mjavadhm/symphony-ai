@@ -19,7 +19,7 @@ documentfile = "1.0.1"
 haze = "1.6.4"
 
 android-gradle-plugin = "8.7.3"
-kotlin-gradle-plugin = "2.1.0"
+kotlin-gradle-plugin = "2.4.0"
 kotlin-serialization-plugin = "2.1.0"
 ksp-plugin = "2.1.0-1.0.29"
 
