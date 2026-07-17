@@ -33,4 +33,7 @@ interface PlaybackHistoryStore {
 
     @Query("SELECT DISTINCT songId FROM playback_history")
     suspend fun getAllPlayedSongIds(): List<String>
+
+    @Query("SELECT DISTINCT songId FROM playback_history WHERE skipped = 1 AND playedAt >= :since")
+    suspend fun getRecentlySkippedSongIds(since: Long): List<String>
 }

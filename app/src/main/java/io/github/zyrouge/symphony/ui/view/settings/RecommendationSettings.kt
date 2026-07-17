@@ -5,7 +5,8 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
-import io.github.zyrouge.symphony.ui.components.ScaffoldTopAppBar
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import io.github.zyrouge.symphony.ui.helpers.ViewContext
 import kotlinx.coroutines.launch
 import kotlinx.serialization.Serializable
@@ -25,7 +26,16 @@ fun RecommendationSettings(context: ViewContext) {
     var dailyMixCount by remember { mutableStateOf(engine.dailyMixCount.toFloat()) }
 
     Scaffold(
-        topBar = { ScaffoldTopAppBar(context, title = "تنظیمات هوش مصنوعی") },
+        topBar = {
+            TopAppBar(
+                title = { Text("تنظیمات هوش مصنوعی") },
+                navigationIcon = {
+                    IconButton(onClick = { context.navController.popBackStack() }) {
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, null)
+                    }
+                },
+            )
+        },
     ) { paddingValues ->
         Column(
             modifier = Modifier
