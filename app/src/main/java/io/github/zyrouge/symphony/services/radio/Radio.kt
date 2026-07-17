@@ -381,12 +381,48 @@ class Radio(private val symphony: Symphony) : Symphony.Hooks {
             queue.currentSongIndex = -1
             return
         }
+        // Autoplay: صف تموم شده → به جای توقف، با آهنگهای مشابه ادامه بده
+        if (source == SongFinishSource.Finish &&
+            queue.currentLoopMode == RadioQueue.LoopMode.Autoplay &&
+            !queue.hasSongAt(queue.currentSongIndex + 1) &&
+            !pauseOnCurrentSongEnd
+        ) {
+            extendQueueForAutoplay()
+            return
+        }
         var (nextSongIndex, autostart) = getNextSong(source)
         if (pauseOnCurrentSongEnd) {
             autostart = false
             setPauseOnCurrentSongEnd(false)
         }
         play(PlayOptions(nextSongIndex, autostart = autostart))
+    }
+
+    fun extendQueueForAutoplay() {
+        val insertIndex = queue.currentSongIndex + 1
+        val hadPlayer = hasPlayer
+        symphony.groove.coroutineScope.launch {
+            val songIds = try {
+                symphony.recommendation.getAutoplaySongs(
+                    seedSongIds = queue.currentQueue.toList(),
+                    excludeSongIds = queue.currentQueue.toSet(),
+                )
+            } catch (err: Exception) {
+                Logger.error("Radio", "autoplay recommendation failed", err)
+                emptyList()
+            }
+            if (songIds.isEmpty()) {
+                // موتور آماده نیست → همون رفتار قبلی (برگرد اول صف و متوقف شو)
+                if (!hadPlayer) {
+                    play(PlayOptions(index = 0, autostart = false))
+                }
+                return@launch
+            }
+            queue.add(songIds, options = PlayOptions(index = insertIndex))
+            if (hadPlayer) {
+                play(PlayOptions(index = insertIndex))
+            }
+        }
     }
 
     private fun getNextSong(source: SongFinishSource): Pair<Int, Boolean> {

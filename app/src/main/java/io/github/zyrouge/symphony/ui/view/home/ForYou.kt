@@ -141,10 +141,7 @@ fun ForYouView(context: ViewContext) {
                             },
                             enabled = !songsIsUpdating,
                             onClick = {
-                                context.symphony.radio.shorty.playQueue(
-                                    songIds.toList(),
-                                    shuffle = true,
-                                )
+                                context.symphony.radio.shorty.playQueueSmart(songIds.toList())
                             }
                         )
                     }

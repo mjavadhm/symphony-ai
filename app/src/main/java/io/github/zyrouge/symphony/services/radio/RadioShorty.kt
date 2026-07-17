@@ -47,6 +47,11 @@ class RadioShorty(private val symphony: Symphony) {
                 true
             }
 
+            symphony.radio.queue.currentLoopMode == RadioQueue.LoopMode.Autoplay -> {
+                symphony.radio.extendQueueForAutoplay()
+                true
+            }
+
             else -> {
                 symphony.radio.play(Radio.PlayOptions(index = 0, autostart = false))
                 false
@@ -77,4 +82,16 @@ class RadioShorty(private val symphony: Symphony) {
         options: Radio.PlayOptions = Radio.PlayOptions(),
         shuffle: Boolean = false,
     ) = playQueue(listOf(songId), options = options, shuffle = shuffle)
+
+    fun playQueueSmart(songIds: List<String>) {
+        symphony.radio.stop(ended = false)
+        if (songIds.isEmpty()) {
+            return
+        }
+        symphony.radio.queue.add(
+            songIds,
+            options = Radio.PlayOptions(index = Random.nextInt(songIds.size)),
+        )
+        symphony.radio.queue.enableSmartShuffle()
+    }
 }

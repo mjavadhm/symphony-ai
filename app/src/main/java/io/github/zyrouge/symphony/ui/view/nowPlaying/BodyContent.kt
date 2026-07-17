@@ -45,6 +45,8 @@ import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Repeat
 import androidx.compose.material.icons.filled.RepeatOne
+import androidx.compose.material.icons.filled.AllInclusive
+import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.Shuffle
 import androidx.compose.material.icons.filled.SkipNext
 import androidx.compose.material.icons.filled.SkipPrevious
@@ -326,14 +328,18 @@ fun NowPlayingTraditionalControls(context: ViewContext, data: NowPlayingData) {
 @Composable
 private fun NowPlayingShuffleButton(context: ViewContext, data: NowPlayingData) {
     val view = LocalView.current
+    val smartShuffle by context.symphony.radio.queue.smartShuffleMode.collectAsState()
     IconButton(
         onClick = {
             view.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
-            context.symphony.radio.queue.toggleShuffleMode()
+            context.symphony.radio.queue.cycleShuffleMode()
         }
     ) {
         Icon(
-            Icons.Filled.Shuffle,
+            when {
+                data.currentShuffleMode && smartShuffle -> Icons.Filled.AutoAwesome
+                else -> Icons.Filled.Shuffle
+            },
             null,
             tint = when {
                 data.currentShuffleMode -> LocalNowPlayingAccent.current
@@ -356,6 +362,7 @@ private fun NowPlayingLoopButton(context: ViewContext, data: NowPlayingData) {
         Icon(
             when (data.currentLoopMode) {
                 RadioQueue.LoopMode.Song -> Icons.Filled.RepeatOne
+                RadioQueue.LoopMode.Autoplay -> Icons.Filled.AllInclusive
                 else -> Icons.Filled.Repeat
             },
             null,

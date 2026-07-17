@@ -2,12 +2,15 @@ package io.github.zyrouge.symphony.services.radio
 
 import io.github.zyrouge.symphony.Symphony
 import io.github.zyrouge.symphony.utils.concurrentListOf
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.launch
 
 class RadioQueue(private val symphony: Symphony) {
     enum class LoopMode {
         None,
         Queue,
-        Song;
+        Song,
+        Autoplay;
 
         companion object {
             val values = enumValues<LoopMode>()
@@ -34,6 +37,37 @@ class RadioQueue(private val symphony: Symphony) {
             field = value
             symphony.radio.onUpdate.dispatch(Radio.Events.QueueOption.LoopModeChanged)
         }
+
+    val smartShuffleMode = MutableStateFlow(false)
+
+    fun cycleShuffleMode() {
+        when {
+            !currentShuffleMode -> setShuffleMode(true)   // خاموش → شافل معمولی
+            !smartShuffleMode.value -> enableSmartShuffle() // معمولی → هوشمند
+            else -> setShuffleMode(false)                  // هوشمند → خاموش
+        }
+    }
+
+    fun enableSmartShuffle() {
+        if (currentQueue.isEmpty()) {
+            return
+        }
+        smartShuffleMode.value = true
+        currentShuffleMode = true
+        val currentSongId = getSongIdAt(currentSongIndex) ?: getSongIdAt(0)
+        val ids = originalQueue.toList()
+        symphony.groove.coroutineScope.launch {
+            val ordered = try {
+                symphony.recommendation.smartShuffleOrder(ids, currentSongId)
+            } catch (err: Exception) {
+                ids.shuffled()
+            }
+            currentQueue.clear()
+            currentQueue.addAll(ordered)
+            currentSongIndex = 0
+            symphony.radio.onUpdate.dispatch(Radio.Events.Queue.Modified)
+        }
+    }
 
     val currentSongId: String?
         get() = getSongIdAt(currentSongIndex)
@@ -122,6 +156,7 @@ class RadioQueue(private val symphony: Symphony) {
     fun toggleShuffleMode() = setShuffleMode(!currentShuffleMode)
 
     fun setShuffleMode(to: Boolean) {
+        smartShuffleMode.value = false
         currentShuffleMode = to
         if (currentQueue.isNotEmpty()) {
             val currentSongId = getSongIdAt(currentSongIndex) ?: getSongIdAt(0)!!

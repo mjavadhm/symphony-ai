@@ -7,8 +7,10 @@ import io.github.zyrouge.symphony.services.database.entities.MixContext
 import io.github.zyrouge.symphony.services.database.entities.MixFeedback
 import io.github.zyrouge.symphony.services.groove.Song
 import io.github.zyrouge.symphony.utils.Logger
+import kotlin.math.ln
 import kotlin.math.pow
 import kotlin.math.sqrt
+import kotlin.random.Random
 
 class RecommendationEngine(private val symphony: Symphony) {
     data class DailyMix(val name: String, val songIds: List<String>)
@@ -384,5 +386,94 @@ class RecommendationEngine(private val symphony: Symphony) {
         val index = pathIndex()
         val p = path.lowercase()
         return index[p] ?: index[p.substringAfterLast('/')]
+    }
+
+    // ==================== Autoplay ====================
+
+    suspend fun getAutoplaySongs(
+        seedSongIds: List<String>,
+        excludeSongIds: Set<String>,
+        limit: Int = 10,
+    ): List<String> {
+        if (!symphony.semanticSearch.isReady.value) return emptyList()
+
+        // میانگین embedding سه آهنگ آخر صف = "حال و هوای الان"
+        val vectors = seedSongIds.takeLast(3).mapNotNull { songId ->
+            val song = symphony.groove.song.get(songId) ?: return@mapNotNull null
+            symphony.semanticSearch.getTrackEmbedding(song.title, song.artists.joinToString())
+        }
+        if (vectors.isEmpty()) return emptyList()
+
+        val dim = vectors.first().size
+        val centroid = FloatArray(dim)
+        for (v in vectors) {
+            for (i in 0 until dim) centroid[i] += v[i] / vectors.size
+        }
+
+        // آهنگهایی که این هفته skip شدن رو پیشنهاد نده
+        val skipped = try {
+            val weekAgo = System.currentTimeMillis() - 7L * 24 * 60 * 60 * 1000
+            symphony.database.playbackHistory.getRecentlySkippedSongIds(weekAgo).toSet()
+        } catch (err: Exception) {
+            emptySet()
+        }
+
+        // نگاشت مسیر فایل → شناسه آهنگ
+        val pathToSongId = HashMap<String, String>()
+        for (id in symphony.groove.song.all.value) {
+            symphony.groove.song.get(id)?.let { pathToSongId[it.path] = id }
+        }
+
+        val results = symphony.semanticSearch.searchByVector(centroid, limit * 5)
+        val picked = mutableListOf<String>()
+        for (result in results) {
+            val songId = pathToSongId[result.track.filePath] ?: continue
+            if (songId in excludeSongIds || songId in skipped || songId in picked) continue
+            picked.add(songId)
+            if (picked.size >= limit) break
+        }
+        return picked
+    }
+
+    // ==================== Smart Shuffle ====================
+
+    suspend fun smartShuffleOrder(
+        songIds: List<String>,
+        firstSongId: String? = null,
+    ): List<String> {
+        if (songIds.size <= 2) return songIds
+
+        val monthAgo = System.currentTimeMillis() - 30L * 24 * 60 * 60 * 1000
+        val history = try {
+            symphony.database.playbackHistory.getHistorySince(monthAgo)
+        } catch (err: Exception) {
+            emptyList()
+        }
+
+        val plays = HashMap<String, Int>()
+        val skips = HashMap<String, Int>()
+        for (h in history) {
+            if (h.skipped) skips[h.songId] = (skips[h.songId] ?: 0) + 1
+            else plays[h.songId] = (plays[h.songId] ?: 0) + 1
+        }
+
+        val rng = Random(System.nanoTime())
+        // نویز Gumbel: راه استاندارد برای "شافل وزندار"
+        fun gumbelNoise(): Double {
+            val u = rng.nextDouble().coerceIn(1e-9, 1.0 - 1e-9)
+            return -ln(-ln(u))
+        }
+
+        val ordered = songIds.sortedByDescending { songId ->
+            val score = ln(1.0 + (plays[songId] ?: 0)) -
+                    1.2 * ln(1.0 + (skips[songId] ?: 0))
+            score + gumbelNoise()
+        }.toMutableList()
+
+        // آهنگ در حال پخش همیشه اول بمونه
+        firstSongId?.let {
+            if (ordered.remove(it)) ordered.add(0, it)
+        }
+        return ordered
     }
 }
