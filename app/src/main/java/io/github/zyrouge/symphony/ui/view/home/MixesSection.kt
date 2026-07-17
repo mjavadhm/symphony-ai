@@ -1,13 +1,11 @@
 package io.github.zyrouge.symphony.ui.view.home
 
 import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Edit
@@ -17,14 +15,14 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import coil.compose.AsyncImage
 import io.github.zyrouge.symphony.services.database.entities.CustomMix
-import io.github.zyrouge.symphony.services.groove.Song
+import io.github.zyrouge.symphony.services.database.entities.MixContext
+import io.github.zyrouge.symphony.services.recommendation.RecommendationEngine
 import io.github.zyrouge.symphony.ui.components.AddToPlaylistDialog
 import io.github.zyrouge.symphony.ui.components.SongCard
 import io.github.zyrouge.symphony.ui.helpers.ViewContext
@@ -39,37 +37,92 @@ fun MixesSection(context: ViewContext) {
     val coroutineScope = rememberCoroutineScope()
     val mixes by context.symphony.database.customMixes.getAll()
         .collectAsState(initial = emptyList())
+    val contexts by context.symphony.database.mixContexts.getAll()
+        .collectAsState(initial = emptyList())
 
-    var dailyMixIds by remember { mutableStateOf<List<String>?>(null) }
+    var dailyMixes by remember { mutableStateOf<List<RecommendationEngine.DailyMix>?>(null) }
     var openedMix by remember { mutableStateOf<CustomMix?>(null) }
-    var openedDailyMix by remember { mutableStateOf(false) }
+    var openedDaily by remember { mutableStateOf<RecommendationEngine.DailyMix?>(null) }
+    var openedContext by remember { mutableStateOf<MixContext?>(null) }
     var editorTarget by remember { mutableStateOf<CustomMix?>(null) }
     var showEditor by remember { mutableStateOf(false) }
 
+    val activeCtx = remember(contexts) {
+        context.symphony.recommendation.activeContext(contexts)
+    }
+
     LaunchedEffect(Unit) {
         context.symphony.recommendation.seedDefaultMixesIfNeeded()
-        dailyMixIds = context.symphony.recommendation.getDailyMix()
+        context.symphony.recommendation.seedDefaultContextsIfNeeded()
+        dailyMixes = context.symphony.recommendation.getDailyMixes()
+    }
+
+    val refreshDaily: () -> Unit = {
+        coroutineScope.launch {
+            dailyMixes = context.symphony.recommendation.getDailyMixes(forceRefresh = true)
+        }
     }
 
     Column {
-        // ---- Daily Mix (فقط وقتی داده کافی هست) ----
-        dailyMixIds?.takeIf { it.isNotEmpty() }?.let { ids ->
+        // ---- Daily Mixes ----
+        dailyMixes?.takeIf { it.isNotEmpty() }?.let { list ->
+            when (list.size) {
+                1 -> Box(modifier = Modifier.padding(20.dp, 0.dp)) {
+                    DailyMixCard(
+                        context = context,
+                        mix = list[0],
+                        modifier = Modifier.fillMaxWidth(),
+                        onPlay = { playMix(context, "daily_mix", list[0].songIds) },
+                        onOpen = { openedDaily = list[0] },
+                        onRefresh = refreshDaily,
+                    )
+                }
+
+                else -> Row(
+                    modifier = Modifier.horizontalScroll(rememberScrollState()),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    Spacer(modifier = Modifier.width(12.dp))
+                    list.forEach { mix ->
+                        DailyMixCard(
+                            context = context,
+                            mix = mix,
+                            modifier = Modifier.width(300.dp),
+                            onPlay = { playMix(context, "daily_mix", mix.songIds) },
+                            onOpen = { openedDaily = mix },
+                            onRefresh = refreshDaily,
+                        )
+                    }
+                    Spacer(modifier = Modifier.width(12.dp))
+                }
+            }
+            Spacer(modifier = Modifier.height(20.dp))
+        }
+
+        // ---- Context Mix (فقط وقتی ساعت فعلی توی یکی از بازههاست) ----
+        activeCtx?.let { ctx ->
             Box(modifier = Modifier.padding(20.dp, 0.dp)) {
-                DailyMixCard(
-                    context = context,
-                    songIds = ids,
-                    onPlay = {
-                        context.symphony.radio.playbackSource = "daily_mix"
-                        context.symphony.radio.shorty.playQueue(ids)
-                    },
-                    onOpen = { openedDailyMix = true },
-                    onRefresh = {
-                        coroutineScope.launch {
-                            dailyMixIds =
-                                context.symphony.recommendation.getDailyMix(forceRefresh = true)
+                ElevatedCard(
+                    modifier = Modifier.fillMaxWidth(),
+                    onClick = { openedContext = ctx },
+                ) {
+                    Row(
+                        modifier = Modifier.padding(16.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Text(ctx.icon, style = MaterialTheme.typography.headlineSmall)
+                        Spacer(modifier = Modifier.width(12.dp))
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text("${ctx.name} Mix", style = MaterialTheme.typography.titleMedium)
+                            Text(
+                                "چیزی که این ساعتها معمولاً گوش میدی",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
                         }
-                    },
-                )
+                        Icon(Icons.Filled.PlayArrow, null)
+                    }
+                }
             }
             Spacer(modifier = Modifier.height(20.dp))
         }
@@ -107,13 +160,22 @@ fun MixesSection(context: ViewContext) {
             onDismiss = { openedMix = null },
         )
     }
-    if (openedDailyMix) {
+    openedDaily?.let { mix ->
         MixSheet(
             context = context,
-            title = "🌅 Daily Mix",
+            title = "🌅 ${mix.name}",
             source = "daily_mix",
-            loadSongIds = { dailyMixIds ?: emptyList() },
-            onDismiss = { openedDailyMix = false },
+            loadSongIds = { mix.songIds },
+            onDismiss = { openedDaily = null },
+        )
+    }
+    openedContext?.let { ctx ->
+        MixSheet(
+            context = context,
+            title = "${ctx.icon} ${ctx.name} Mix",
+            source = "context_mix",
+            loadSongIds = { context.symphony.recommendation.getContextMixSongIds(ctx) },
+            onDismiss = { openedContext = null },
         )
     }
     if (showEditor) {
@@ -125,24 +187,41 @@ fun MixesSection(context: ViewContext) {
     }
 }
 
+private fun playMix(context: ViewContext, source: String, songIds: List<String>) {
+    context.symphony.radio.playbackSource = source
+    context.symphony.radio.shorty.playQueue(songIds)
+}
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun DailyMixCard(
     context: ViewContext,
-    songIds: List<String>,
+    mix: RecommendationEngine.DailyMix,
+    modifier: Modifier = Modifier,
     onPlay: () -> Unit,
     onOpen: () -> Unit,
     onRefresh: () -> Unit,
 ) {
-    val coverSong = songIds.firstNotNullOfOrNull { context.symphony.groove.song.get(it) }
+    val coverSong = mix.songIds.firstNotNullOfOrNull { context.symphony.groove.song.get(it) }
     val backgroundColor = MaterialTheme.colorScheme.surface
     ElevatedCard(
-        modifier = Modifier
-            .fillMaxWidth()
-            .height(140.dp),
+        modifier = modifier.height(140.dp),
         onClick = onOpen,
     ) {
         Box {
+            // ✅ پسزمینهی همیشگی — حتی وقتی artwork وجود نداره کارت خالی دیده نمیشه
+            Box(
+                modifier = Modifier
+                    .matchParentSize()
+                    .background(
+                        Brush.linearGradient(
+                            colors = listOf(
+                                MaterialTheme.colorScheme.primaryContainer,
+                                MaterialTheme.colorScheme.tertiaryContainer,
+                            ),
+                        )
+                    )
+            )
             coverSong?.let {
                 AsyncImage(
                     it.createArtworkImageRequest(context.symphony).build(),
@@ -157,7 +236,7 @@ private fun DailyMixCard(
                     .background(
                         Brush.horizontalGradient(
                             colors = listOf(
-                                backgroundColor.copy(alpha = 0.5f),
+                                backgroundColor.copy(alpha = 0.4f),
                                 backgroundColor.copy(alpha = 0.85f),
                             ),
                         )
@@ -175,12 +254,12 @@ private fun DailyMixCard(
                 Spacer(modifier = Modifier.width(16.dp))
                 Column(modifier = Modifier.weight(1f)) {
                     Text(
-                        "Daily Mix",
+                        mix.name,
                         style = MaterialTheme.typography.titleLarge,
                         maxLines = 1,
                     )
                     Text(
-                        "بر اساس شنیده‌های اخیرت · ${songIds.size} آهنگ",
+                        "بر اساس شنیدههای اخیرت · ${mix.songIds.size} آهنگ",
                         style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         maxLines = 2,
@@ -256,14 +335,14 @@ private fun NewMixCard(onClick: () -> Unit) {
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun MixSheet(
+fun MixSheet(
     context: ViewContext,
     title: String,
     source: String,
     loadSongIds: suspend () -> List<String>,
     onDismiss: () -> Unit,
 ) {
-    var songs by remember { mutableStateOf<List<Song>?>(null) }
+    var songs by remember { mutableStateOf<List<io.github.zyrouge.symphony.services.groove.Song>?>(null) }
     var showAddToPlaylist by remember { mutableStateOf(false) }
 
     LaunchedEffect(Unit) {
@@ -286,8 +365,7 @@ private fun MixSheet(
                 songs?.takeIf { it.isNotEmpty() }?.let { list ->
                     TextButton(onClick = { showAddToPlaylist = true }) { Text("Save") }
                     Button(onClick = {
-                        context.symphony.radio.playbackSource = source
-                        context.symphony.radio.shorty.playQueue(list.map { it.id })
+                        playMix(context, source, list.map { it.id })
                         onDismiss()
                     }) { Text("Play") }
                 }
@@ -309,7 +387,7 @@ private fun MixSheet(
                         contentAlignment = Alignment.Center,
                     ) {
                         Text(
-                            "نتیجه‌ای پیدا نشد — prompt رو تغییر بده",
+                            "هنوز دادهی کافی برای این میکس نیست",
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
                     }
@@ -352,7 +430,7 @@ private fun MixEditorDialog(
     var prompt by remember { mutableStateOf(existing?.prompt ?: "") }
     var icon by remember { mutableStateOf(existing?.icon ?: "🎵") }
     var trackCount by remember { mutableStateOf((existing?.trackCount ?: 25).toFloat()) }
-    var preview by remember { mutableStateOf<List<Song>?>(null) }
+    var preview by remember { mutableStateOf<List<io.github.zyrouge.symphony.services.groove.Song>?>(null) }
     var isPreviewing by remember { mutableStateOf(false) }
 
     AlertDialog(

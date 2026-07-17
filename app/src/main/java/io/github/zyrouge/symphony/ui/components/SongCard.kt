@@ -24,6 +24,8 @@ import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.Share
+import androidx.compose.material.icons.filled.ThumbUp
+import androidx.compose.material.icons.filled.ThumbDown
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.ColorScheme
@@ -300,6 +302,28 @@ fun SongDropdownMenu(
             }
         )
         if (showAiOption) {
+            DropdownMenuItem(
+                leadingIcon = { Icon(Icons.Filled.ThumbUp, null) },
+                text = { Text("More like this") },
+                onClick = {
+                    onDismissRequest()
+                    coroutineScope.launch {
+                        context.symphony.recommendation.setFeedback(song, true)
+                        Toast.makeText(context.activity, "ثبت شد 👍 — میکسها از این بیشتر میارن", Toast.LENGTH_SHORT).show()
+                    }
+                }
+            )
+            DropdownMenuItem(
+                leadingIcon = { Icon(Icons.Filled.ThumbDown, null) },
+                text = { Text("Less like this") },
+                onClick = {
+                    onDismissRequest()
+                    coroutineScope.launch {
+                        context.symphony.recommendation.setFeedback(song, false)
+                        Toast.makeText(context.activity, "ثبت شد 👎 — دیگه توی میکسها نمیاد", Toast.LENGTH_SHORT).show()
+                    }
+                }
+            )
             if (!isEmbedded) {
                 var isEmbedding by remember { mutableStateOf(false) }
                 DropdownMenuItem(

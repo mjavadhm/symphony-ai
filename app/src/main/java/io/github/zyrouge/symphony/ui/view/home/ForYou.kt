@@ -80,9 +80,6 @@ fun ForYouView(context: ViewContext) {
     val songIds by context.symphony.groove.song.all.collectAsState()
     val sortBy by context.symphony.settings.lastUsedSongsSortBy.flow.collectAsState()
     val sortReverse by context.symphony.settings.lastUsedSongsSortReverse.flow.collectAsState()
-    
-    val mostPlayedSongs by context.symphony.database.playbackHistory.getMostPlayedSongs(10).collectAsState(initial = emptyList())
-    val recentlyPlayedSongs by context.symphony.database.playbackHistory.getRecentlyPlayedSongs(10).collectAsState(initial = emptyList())
 
     when {
         songIds.isNotEmpty() -> {
@@ -90,17 +87,6 @@ fun ForYouView(context: ViewContext) {
                 derivedStateOf {
                     runIfOrDefault(!songsIsUpdating, listOf()) {
                         context.symphony.groove.song.sort(songIds.toList(), sortBy, sortReverse)
-                    }
-                }
-            }
-            val recentlyAddedSongs by remember(songsIsUpdating, songIds) {
-                derivedStateOf {
-                    runIfOrDefault(!songsIsUpdating, listOf()) {
-                        context.symphony.groove.song.sort(
-                            songIds.toList(),
-                            SongRepository.SortBy.DATE_MODIFIED,
-                            true
-                        )
                     }
                 }
             }
@@ -165,161 +151,6 @@ fun ForYouView(context: ViewContext) {
                 }
                 Spacer(modifier = Modifier.height(20.dp))
                 MixesSection(context)
-                if (mostPlayedSongs.isNotEmpty()) {
-                    SideHeading {
-                        Text("Most Played")
-                    }
-                    Spacer(modifier = Modifier.height(12.dp))
-                    BoxWithConstraints {
-                        val tileWidth = this@BoxWithConstraints.maxWidth.times(0.7f)
-                        Row(
-                            modifier = Modifier.horizontalScroll(rememberScrollState()),
-                            horizontalArrangement = Arrangement.spacedBy(8.dp),
-                        ) {
-                            Spacer(modifier = Modifier.width(12.dp))
-                            mostPlayedSongs.forEachIndexed { i, songId ->
-                                val song = context.symphony.groove.song.get(songId) ?: return@forEachIndexed
-                                ForYouSongCard(context, song, tileWidth, mostPlayedSongs, i)
-                            }
-                            Spacer(modifier = Modifier.width(12.dp))
-                        }
-                    }
-                    Spacer(modifier = Modifier.height(20.dp))
-                }
-                if (recentlyPlayedSongs.isNotEmpty()) {
-                    SideHeading {
-                        Text("Recently Played")
-                    }
-                    Spacer(modifier = Modifier.height(12.dp))
-                    BoxWithConstraints {
-                        val tileWidth = this@BoxWithConstraints.maxWidth.times(0.7f)
-                        Row(
-                            modifier = Modifier.horizontalScroll(rememberScrollState()),
-                            horizontalArrangement = Arrangement.spacedBy(8.dp),
-                        ) {
-                            Spacer(modifier = Modifier.width(12.dp))
-                            recentlyPlayedSongs.forEachIndexed { i, songId ->
-                                val song = context.symphony.groove.song.get(songId) ?: return@forEachIndexed
-                                ForYouSongCard(context, song, tileWidth, recentlyPlayedSongs, i)
-                            }
-                            Spacer(modifier = Modifier.width(12.dp))
-                        }
-                    }
-                    Spacer(modifier = Modifier.height(20.dp))
-                }
-
-                SideHeading {
-                    Text(context.symphony.t.RecentlyAddedSongs)
-                }
-                Spacer(modifier = Modifier.height(12.dp))
-                when {
-                    songsIsUpdating -> SixGridLoading()
-                    recentlyAddedSongs.isEmpty() -> SixGridEmpty(context)
-                    else -> BoxWithConstraints {
-                        val tileWidth = this@BoxWithConstraints.maxWidth.times(0.7f)
-                        Row(
-                            modifier = Modifier.horizontalScroll(rememberScrollState()),
-                            horizontalArrangement = Arrangement.spacedBy(8.dp),
-                        ) {
-                            Spacer(modifier = Modifier.width(12.dp))
-                            recentlyAddedSongs.subListNonStrict(5).forEachIndexed { i, songId ->
-                                val tileHeight = 96.dp
-                                val backgroundColor = MaterialTheme.colorScheme.surface
-                                val song = context.symphony.groove.song.get(songId)
-                                    ?: return@forEachIndexed
-
-                                ElevatedCard(
-                                    modifier = Modifier
-                                        .width(tileWidth)
-                                        .height(tileHeight),
-                                    onClick = {
-                                        context.symphony.radio.shorty.playQueue(
-                                            recentlyAddedSongs,
-                                            options = Radio.PlayOptions(index = i),
-                                        )
-                                    }
-                                ) {
-                                    Box {
-                                        AsyncImage(
-                                            song.createArtworkImageRequest(context.symphony)
-                                                .build(),
-                                            null,
-                                            contentScale = ContentScale.FillWidth,
-                                            modifier = Modifier.matchParentSize(),
-                                        )
-                                        Box(
-                                            modifier = Modifier
-                                                .matchParentSize()
-                                                .background(
-                                                    Brush.horizontalGradient(
-                                                        colors = listOf(
-                                                            backgroundColor.copy(alpha = 0.2f),
-                                                            backgroundColor.copy(alpha = 0.7f),
-                                                            backgroundColor.copy(alpha = 0.8f),
-                                                        ),
-                                                    )
-                                                )
-                                        )
-                                        Row(modifier = Modifier.padding(8.dp)) {
-                                            Box {
-                                                AsyncImage(
-                                                    song.createArtworkImageRequest(context.symphony)
-                                                        .build(),
-                                                    null,
-                                                    contentScale = ContentScale.Crop,
-                                                    modifier = Modifier
-                                                        .aspectRatio(1f)
-                                                        .fillMaxHeight()
-                                                        .clip(RoundedCornerShape(4.dp)),
-                                                )
-                                                Box(
-                                                    modifier = Modifier.matchParentSize(),
-                                                    contentAlignment = Alignment.Center,
-                                                ) {
-                                                    Box(
-                                                        modifier = Modifier
-                                                            .background(
-                                                                backgroundColor.copy(alpha = 0.25f),
-                                                                CircleShape,
-                                                            )
-                                                            .padding(1.dp)
-                                                    ) {
-                                                        Icon(
-                                                            Icons.Filled.PlayArrow,
-                                                            null,
-                                                            modifier = Modifier.size(20.dp),
-                                                        )
-                                                    }
-                                                }
-                                            }
-                                            Spacer(modifier = Modifier.width(16.dp))
-                                            Column(
-                                                modifier = Modifier.fillMaxSize(),
-                                                verticalArrangement = Arrangement.Center,
-                                            ) {
-                                                Text(
-                                                    song.title,
-                                                    style = MaterialTheme.typography.titleMedium,
-                                                    maxLines = 2,
-                                                    overflow = TextOverflow.Ellipsis,
-                                                )
-                                                if (song.artists.isNotEmpty()) {
-                                                    Text(
-                                                        song.artists.joinToString(),
-                                                        style = MaterialTheme.typography.bodyMedium,
-                                                        maxLines = 2,
-                                                        overflow = TextOverflow.Ellipsis,
-                                                    )
-                                                }
-                                            }
-                                        }
-                                    }
-                                }
-                            }
-                            Spacer(modifier = Modifier.width(12.dp))
-                        }
-                    }
-                }
                 val contents by context.symphony.settings.forYouContents.flow.collectAsState()
                 contents.forEach {
                     when (it) {

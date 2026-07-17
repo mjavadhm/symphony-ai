@@ -59,6 +59,7 @@ import io.github.zyrouge.symphony.ui.view.settings.NowPlayingSettingsViewRoute
 import io.github.zyrouge.symphony.ui.view.settings.PlayerSettingsViewRoute
 import io.github.zyrouge.symphony.ui.view.settings.SemanticSearchSettingsViewRoute
 import io.github.zyrouge.symphony.ui.view.settings.BackupSettingsViewRoute
+import io.github.zyrouge.symphony.ui.view.settings.RecommendationSettingsRoute
 import kotlinx.serialization.Serializable
 
 @Serializable
@@ -215,6 +216,14 @@ fun SettingsView(context: ViewContext, route: SettingsViewRoute) {
                                 title = { Text("AI Search") },
                                 onClick = {
                                     context.navController.navigate(SemanticSearchSettingsViewRoute)
+                                },
+                            )
+                            SettingsGlassDivider()
+                            SettingsSimpleTile(
+                                icon = { Icon(Icons.Filled.AutoAwesome, null) },
+                                title = { Text("AI Recommendations") },
+                                onClick = {
+                                    context.navController.navigate(RecommendationSettingsRoute)
                                 },
                             )
                             SettingsGlassDivider()

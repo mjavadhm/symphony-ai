@@ -10,10 +10,20 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.ImportExport
+import androidx.compose.material.icons.filled.OpenInNew
 import androidx.compose.material3.ElevatedButton
+import androidx.compose.material3.ElevatedCard
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.runtime.rememberCoroutineScope
+import io.github.zyrouge.symphony.services.groove.repositories.SongRepository
+import io.github.zyrouge.symphony.utils.subListNonStrict
+import kotlinx.coroutines.flow.first
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -75,7 +85,8 @@ fun PlaylistsView(context: ViewContext) {
                         openPlaylistLauncher.launch(arrayOf(MediaExposer.MIMETYPE_M3U))
                     },
                 )
-                Spacer(modifier = Modifier.height(4.dp))
+                Spacer(modifier = Modifier.height(8.dp))
+                SmartCollectionsRow(context)
             }
         )
     }
@@ -131,6 +142,66 @@ private fun PlaylistControlBar(
                 Spacer(modifier = Modifier.width(8.dp))
                 Text(context.symphony.t.ImportPlaylist)
             }
+        }
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun SmartCollectionsRow(context: ViewContext) {
+    var opened by remember { mutableStateOf<String?>(null) }
+    Row(
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        modifier = Modifier.padding(20.dp, 0.dp),
+    ) {
+        SmartCard("⭐", "Most Played", Modifier.weight(1f)) { opened = "most" }
+        SmartCard("🕐", "Recent", Modifier.weight(1f)) { opened = "recent" }
+        SmartCard("🆕", "New", Modifier.weight(1f)) { opened = "added" }
+    }
+    opened?.let { kind ->
+        MixSheet(
+            context = context,
+            title = when (kind) {
+                "most" -> "⭐ Most Played"
+                "recent" -> "🕐 Recently Played"
+                else -> "🆕 Recently Added"
+            },
+            source = "smart_$kind",
+            loadSongIds = {
+                when (kind) {
+                    "most" -> context.symphony.database.playbackHistory
+                        .getMostPlayedSongs(50).first()
+                    "recent" -> context.symphony.database.playbackHistory
+                        .getRecentlyPlayedSongs(50).first()
+                    else -> context.symphony.groove.song.sort(
+                        context.symphony.groove.song.all.value.toList(),
+                        SongRepository.SortBy.DATE_MODIFIED,
+                        true,
+                    ).subListNonStrict(50)
+                }
+            },
+            onDismiss = { opened = null },
+        )
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun SmartCard(
+    icon: String,
+    label: String,
+    modifier: Modifier = Modifier,
+    onClick: () -> Unit,
+) {
+    ElevatedCard(modifier = modifier, onClick = onClick) {
+        Column(modifier = Modifier.padding(12.dp)) {
+            Text(icon, style = MaterialTheme.typography.titleLarge)
+            Spacer(modifier = Modifier.height(4.dp))
+            Text(
+                label,
+                style = MaterialTheme.typography.labelMedium,
+                maxLines = 1,
+            )
         }
     }
 }

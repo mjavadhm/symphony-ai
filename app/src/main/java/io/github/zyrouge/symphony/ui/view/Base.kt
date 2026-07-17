@@ -116,6 +116,9 @@ fun BaseView(symphony: Symphony, activity: MainActivity) {
                 baseComposable<io.github.zyrouge.symphony.ui.view.settings.BackupSettingsViewRoute> {
                     io.github.zyrouge.symphony.ui.view.settings.BackupSettingsView(context)
                 }
+                baseComposable<io.github.zyrouge.symphony.ui.view.settings.RecommendationSettingsRoute> {
+                    io.github.zyrouge.symphony.ui.view.settings.RecommendationSettings(context)
+                }
             }
         }
     }
