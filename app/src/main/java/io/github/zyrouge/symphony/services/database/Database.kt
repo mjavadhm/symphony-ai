@@ -13,4 +13,5 @@ class Database(symphony: Symphony) {
     val songCache get() = cache.songs()
     val playlists get() = persistent.playlists()
     val playbackHistory get() = persistent.playbackHistory()
+    val customMixes get() = persistent.customMixes()
 }

@@ -30,6 +30,12 @@ android {
     }
 
     signingConfigs {
+        create("dev") {
+            storeFile = rootProject.file("symphony-dev.jks")
+            storePassword = "symphony123"
+            keyAlias = "dev"
+            keyPassword = "symphony123"
+        }
         register("release") {
             storeFile = System.getenv("SIGNING_KEYSTORE_FILE")?.let { rootProject.file(it) }
             storePassword = System.getenv("SIGNING_KEYSTORE_PASSWORD")
@@ -60,6 +66,7 @@ android {
         debug {
             applicationIdSuffix = ".debug"
             versionNameSuffix = "-debug"
+            signingConfig = signingConfigs.getByName("dev")
         }
     }
 
