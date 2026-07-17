@@ -90,7 +90,11 @@ class RadioQueue(private val symphony: Symphony) {
         get() = getSongIdAt(currentSongIndex)
 
     fun hasSongAt(index: Int) = index > -1 && index < currentQueue.size
-    fun getSongIdAt(index: Int) = if (hasSongAt(index)) currentQueue[index] else null
+    fun getSongIdAt(index: Int) = try {
+        if (hasSongAt(index)) currentQueue[index] else null
+    } catch (_: IndexOutOfBoundsException) {
+        null
+    }
 
     fun reset() {
         originalQueue.clear()
@@ -176,7 +180,7 @@ class RadioQueue(private val symphony: Symphony) {
         smartShuffleMode.value = false
         currentShuffleMode = to
         if (currentQueue.isNotEmpty()) {
-            val currentSongId = getSongIdAt(currentSongIndex) ?: getSongIdAt(0)!!
+            val currentSongId = getSongIdAt(currentSongIndex) ?: getSongIdAt(0) ?: return
             currentSongIndex = if (currentShuffleMode) {
                 val newQueue = originalQueue.toMutableList()
                 newQueue.removeAt(currentSongIndex)
