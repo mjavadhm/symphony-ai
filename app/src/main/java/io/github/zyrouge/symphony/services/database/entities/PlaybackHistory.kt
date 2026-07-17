@@ -23,4 +23,7 @@ data class PlaybackHistory(
     // دیوایس
     val deviceId: String = "",
     val deviceName: String = "",
+    // v3 — منبع پخش و خروجی صدا
+    val source: String = "",       // queue / daily_mix / mood_mix / discover_prompt / discover_similar
+    val audioOutput: String = "",  // speaker / wired / bluetooth
 )

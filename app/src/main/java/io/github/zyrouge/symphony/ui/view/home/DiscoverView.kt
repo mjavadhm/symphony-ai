@@ -246,6 +246,11 @@ fun DiscoverView(context: ViewContext) {
                                     Text("Save")
                                 }
                                 TextButton(onClick = {
+                                    if (searchMode == 0) {
+                                        context.symphony.radio.playbackSource = "discover_prompt"
+                                    } else {
+                                        context.symphony.radio.playbackSource = "discover_similar"
+                                    }
                                     context.symphony.radio.shorty.playQueue(
                                         selectedGeneratedSongs.toList()
                                     )

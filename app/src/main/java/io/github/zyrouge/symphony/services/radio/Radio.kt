@@ -66,6 +66,7 @@ class Radio(private val symphony: Symphony) : Symphony.Hooks {
     var persistedPitch = RadioPlayer.DEFAULT_PITCH
     var sleepTimer: SleepTimer? = null
     var pauseOnCurrentSongEnd = false
+    var playbackSource = "queue"
 
     init {
         nativeReceiver.start()
@@ -352,6 +353,8 @@ class Radio(private val symphony: Symphony) : Symphony.Hooks {
                             artist = song?.artists?.joinToString() ?: "",
                             deviceId = io.github.zyrouge.symphony.utils.DeviceInfo.deviceId(symphony.applicationContext),
                             deviceName = io.github.zyrouge.symphony.utils.DeviceInfo.deviceName(),
+                            source = playbackSource,
+                            audioOutput = currentAudioOutput(),
                         )
                         symphony.database.playbackHistory.insert(history)
                     } catch (e: Exception) {
@@ -498,5 +501,25 @@ class Radio(private val symphony: Symphony) : Symphony.Hooks {
                 playbackPosition = currentPlaybackPosition ?: RadioPlayer.PlaybackPosition.zero
             )
         )
+    }
+
+    private fun currentAudioOutput(): String {
+        return try {
+            val am = symphony.applicationContext
+                .getSystemService(android.content.Context.AUDIO_SERVICE) as android.media.AudioManager
+            val devices = am.getDevices(android.media.AudioManager.GET_DEVICES_OUTPUTS)
+            when {
+                devices.any {
+                    it.type == android.media.AudioDeviceInfo.TYPE_BLUETOOTH_A2DP ||
+                    it.type == android.media.AudioDeviceInfo.TYPE_BLUETOOTH_SCO
+                } -> "bluetooth"
+                devices.any {
+                    it.type == android.media.AudioDeviceInfo.TYPE_WIRED_HEADPHONES ||
+                    it.type == android.media.AudioDeviceInfo.TYPE_WIRED_HEADSET ||
+                    it.type == android.media.AudioDeviceInfo.TYPE_USB_HEADSET
+                } -> "wired"
+                else -> "speaker"
+            }
+        } catch (e: Exception) { "" }
     }
 }

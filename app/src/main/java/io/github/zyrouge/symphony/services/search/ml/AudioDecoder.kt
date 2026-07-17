@@ -48,9 +48,15 @@ class AudioDecoder(private val context: Context) {
         }
 
         val durationSeconds = (durationUs / 1000000).toInt()
-        val chunkLength = 30
+        // ✅ فاصلهی شروع چانکها همون ۳۰ ثانیه میمونه (پوشش آهنگ تغییری نمیکنه)
+        val chunkStep = 30
+
+        // ✅ ولی فقط ۱۱ ثانیه decode میشه — mel بههرحال به ۱۰۰۱ فریم (~۱۰ ثانیه) truncate میکنه.
+        // ۱ ثانیهی اضافه تضمین میکنه فریمها کم نیان و خروجی بیتبهبیت با نسخهی ۳۰ ثانیهای یکسان باشه.
+        val decodeLength = 11
+
         val offsets = mutableListOf<Int>()
-        for (i in 0 until durationSeconds step chunkLength) {
+        for (i in 0 until durationSeconds step chunkStep) {
             offsets.add(i)
         }
         if (offsets.size > 20) {
@@ -61,10 +67,14 @@ class AudioDecoder(private val context: Context) {
         for (offset in offsets) {
             if (durationSeconds - offset < 10 && offsets.size > 1) continue
 
-            val chunkFloats = decodeChunk(extractor, trackIndex, offset, chunkLength, channelCount, sampleRate)
+            val chunkFloats = decodeChunk(
+                extractor, trackIndex, offset,
+                decodeLength,          // ← قبلاً chunkLength (۳۰) بود
+                channelCount, sampleRate
+            )
             if (chunkFloats != null && chunkFloats.isNotEmpty()) {
                 val resampled = resampleTo48k(chunkFloats, sampleRate)
-                onChunk(AudioChunk(resampled, offset))   // ← مصرف و رها
+                onChunk(AudioChunk(resampled, offset))
                 count++
             }
         }

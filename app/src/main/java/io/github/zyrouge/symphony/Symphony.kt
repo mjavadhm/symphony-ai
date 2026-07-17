@@ -30,6 +30,7 @@ class Symphony(application: Application) : AndroidViewModel(application), Sympho
     val radio = Radio(this)
     val translator = Translator(this)
     val semanticSearch = io.github.zyrouge.symphony.services.search.SemanticSearchEngine(this)
+    val recommendation = io.github.zyrouge.symphony.services.recommendation.RecommendationEngine(this)
 
     var t by mutableStateOf(translator.getCurrentTranslation())
 

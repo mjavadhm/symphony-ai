@@ -30,4 +30,7 @@ interface PlaybackHistoryStore {
 
     @Query("SELECT COUNT(*) FROM playback_history WHERE skipped = 1 AND songId = :songId")
     suspend fun getSkipCount(songId: String): Int
+
+    @Query("SELECT DISTINCT songId FROM playback_history")
+    suspend fun getAllPlayedSongIds(): List<String>
 }

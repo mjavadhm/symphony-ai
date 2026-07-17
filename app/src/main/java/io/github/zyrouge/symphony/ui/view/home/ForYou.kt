@@ -164,6 +164,7 @@ fun ForYouView(context: ViewContext) {
                     }
                 }
                 Spacer(modifier = Modifier.height(20.dp))
+                MixesSection(context)
                 if (mostPlayedSongs.isNotEmpty()) {
                     SideHeading {
                         Text("Most Played")

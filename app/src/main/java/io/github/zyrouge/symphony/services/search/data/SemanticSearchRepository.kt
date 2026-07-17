@@ -276,4 +276,27 @@ class SemanticSearchRepository(boxStore: BoxStore) {
         }
         return dotProduct
     }
+
+    /** امبدینگ میانگین یک ترک از روی متادیتا (برای بردار سلیقه) */
+    fun findTrackEmbedding(title: String, artist: String): FloatArray? {
+        val tKey = normalizeKey(title)
+        val aKey = normalizeKey(artist)
+        
+        val candidates = trackBox.query(
+            TrackEntity_.title.equal(title, QueryBuilder.StringOrder.CASE_INSENSITIVE)
+        ).build().use { it.find() }
+        
+        if (candidates.isEmpty()) return null
+        
+        return (candidates.firstOrNull { 
+            normalizeKey(it.title ?: "") == tKey && normalizeKey(it.artist ?: "") == aKey 
+        } ?: candidates.first()).meanEmbedding
+    }
+
+    /** جستجوی مستقیم با بردار — هستهی Daily Mix */
+    fun searchByVector(vector: FloatArray, limit: Int): List<TrackEntity> {
+        return trackBox.query(
+            TrackEntity_.meanEmbedding.nearestNeighbors(vector, limit)
+        ).build().use { q -> q.findWithScores().map { it.get() } }
+    }
 }
