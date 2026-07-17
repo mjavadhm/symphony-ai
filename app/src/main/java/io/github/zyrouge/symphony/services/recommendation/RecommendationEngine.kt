@@ -332,6 +332,15 @@ class RecommendationEngine(private val symphony: Symphony) {
     // ---------------------------------------------------------------
     // Mood / Custom Mixes  (بدون تغییر)
     // ---------------------------------------------------------------
+    private val coverCache = HashMap<String, List<String>>()
+
+    suspend fun getMixCoverSongIds(mix: CustomMix): List<String> {
+        coverCache[mix.prompt]?.let { return it }
+        val ids = getMixSongIds(mix.copy(trackCount = 4))
+        if (ids.isNotEmpty()) coverCache[mix.prompt] = ids
+        return ids
+    }
+
     suspend fun getMixSongIds(mix: CustomMix): List<String> {
         return try {
             symphony.semanticSearch.searchDetailed(mix.prompt, mix.trackCount)

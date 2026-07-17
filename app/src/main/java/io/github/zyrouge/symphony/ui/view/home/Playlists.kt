@@ -35,6 +35,12 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.aspectRatio
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
 import io.github.zyrouge.symphony.services.groove.MediaExposer
 import io.github.zyrouge.symphony.services.groove.Playlist
 import io.github.zyrouge.symphony.ui.components.LoaderScaffold
@@ -150,13 +156,27 @@ private fun PlaylistControlBar(
 @Composable
 private fun SmartCollectionsRow(context: ViewContext) {
     var opened by remember { mutableStateOf<String?>(null) }
+    var mostIds by remember { mutableStateOf<List<String>>(emptyList()) }
+    var recentIds by remember { mutableStateOf<List<String>>(emptyList()) }
+    var addedIds by remember { mutableStateOf<List<String>>(emptyList()) }
+
+    LaunchedEffect(Unit) {
+        mostIds = context.symphony.database.playbackHistory.getMostPlayedSongs(4).first()
+        recentIds = context.symphony.database.playbackHistory.getRecentlyPlayedSongs(4).first()
+        addedIds = context.symphony.groove.song.sort(
+            context.symphony.groove.song.all.value.toList(),
+            SongRepository.SortBy.DATE_MODIFIED,
+            true,
+        ).subListNonStrict(4)
+    }
+
     Row(
         horizontalArrangement = Arrangement.spacedBy(8.dp),
         modifier = Modifier.padding(20.dp, 0.dp),
     ) {
-        SmartCard("⭐", "Most Played", Modifier.weight(1f)) { opened = "most" }
-        SmartCard("🕐", "Recent", Modifier.weight(1f)) { opened = "recent" }
-        SmartCard("🆕", "New", Modifier.weight(1f)) { opened = "added" }
+        SmartCard(context, "⭐", "Most Played", mostIds, Modifier.weight(1f)) { opened = "most" }
+        SmartCard(context, "🕐", "Recent", recentIds, Modifier.weight(1f)) { opened = "recent" }
+        SmartCard(context, "🆕", "New", addedIds, Modifier.weight(1f)) { opened = "added" }
     }
     opened?.let { kind ->
         MixSheet(
@@ -188,19 +208,46 @@ private fun SmartCollectionsRow(context: ViewContext) {
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun SmartCard(
+    context: ViewContext,
     icon: String,
     label: String,
+    coverSongIds: List<String>,
     modifier: Modifier = Modifier,
     onClick: () -> Unit,
 ) {
     ElevatedCard(modifier = modifier, onClick = onClick) {
-        Column(modifier = Modifier.padding(12.dp)) {
-            Text(icon, style = MaterialTheme.typography.titleLarge)
-            Spacer(modifier = Modifier.height(4.dp))
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .aspectRatio(1f),
+        ) {
+            MixCoverCollage(context, coverSongIds, Modifier.matchParentSize())
+            Box(
+                modifier = Modifier
+                    .matchParentSize()
+                    .background(
+                        Brush.verticalGradient(
+                            colors = listOf(
+                                Color.Transparent,
+                                Color.Black.copy(alpha = 0.75f),
+                            ),
+                        )
+                    )
+            )
+            Text(
+                icon,
+                modifier = Modifier
+                    .align(Alignment.TopStart)
+                    .padding(8.dp),
+            )
             Text(
                 label,
                 style = MaterialTheme.typography.labelMedium,
+                color = Color.White,
                 maxLines = 1,
+                modifier = Modifier
+                    .align(Alignment.BottomStart)
+                    .padding(8.dp),
             )
         }
     }

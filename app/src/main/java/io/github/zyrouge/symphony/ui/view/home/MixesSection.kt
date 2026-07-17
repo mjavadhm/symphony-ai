@@ -16,6 +16,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -139,6 +140,7 @@ fun MixesSection(context: ViewContext) {
             Spacer(modifier = Modifier.width(12.dp))
             mixes.forEach { mix ->
                 MoodMixCard(
+                    context = context,
                     mix = mix,
                     onClick = { openedMix = mix },
                     onEdit = { editorTarget = mix; showEditor = true },
@@ -202,72 +204,54 @@ private fun DailyMixCard(
     onOpen: () -> Unit,
     onRefresh: () -> Unit,
 ) {
-    val coverSong = mix.songIds.firstNotNullOfOrNull { context.symphony.groove.song.get(it) }
-    val backgroundColor = MaterialTheme.colorScheme.surface
     ElevatedCard(
-        modifier = modifier.height(140.dp),
+        modifier = modifier.height(132.dp),
         onClick = onOpen,
     ) {
-        Box {
-            // ✅ پسزمینهی همیشگی — حتی وقتی artwork وجود نداره کارت خالی دیده نمیشه
-            Box(
+        Row {
+            MixCoverCollage(
+                context = context,
+                songIds = mix.songIds,
                 modifier = Modifier
-                    .matchParentSize()
-                    .background(
-                        Brush.linearGradient(
-                            colors = listOf(
-                                MaterialTheme.colorScheme.primaryContainer,
-                                MaterialTheme.colorScheme.tertiaryContainer,
-                            ),
-                        )
-                    )
-            )
-            coverSong?.let {
-                AsyncImage(
-                    it.createArtworkImageRequest(context.symphony).build(),
-                    null,
-                    contentScale = ContentScale.Crop,
-                    modifier = Modifier.matchParentSize(),
-                )
-            }
-            Box(
-                modifier = Modifier
-                    .matchParentSize()
-                    .background(
-                        Brush.horizontalGradient(
-                            colors = listOf(
-                                backgroundColor.copy(alpha = 0.4f),
-                                backgroundColor.copy(alpha = 0.85f),
-                            ),
-                        )
-                    )
+                    .width(132.dp)
+                    .fillMaxHeight(),
             )
             Row(
                 modifier = Modifier
-                    .matchParentSize()
-                    .padding(16.dp),
+                    .weight(1f)
+                    .fillMaxHeight()
+                    .padding(horizontal = 12.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                FilledIconButton(onClick = onPlay) {
-                    Icon(Icons.Filled.PlayArrow, null)
-                }
-                Spacer(modifier = Modifier.width(16.dp))
                 Column(modifier = Modifier.weight(1f)) {
                     Text(
                         mix.name,
-                        style = MaterialTheme.typography.titleLarge,
+                        style = MaterialTheme.typography.titleMedium,
                         maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
                     )
+                    Spacer(modifier = Modifier.height(2.dp))
                     Text(
                         "بر اساس شنیدههای اخیرت · ${mix.songIds.size} آهنگ",
-                        style = MaterialTheme.typography.bodyMedium,
+                        style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         maxLines = 2,
                         overflow = TextOverflow.Ellipsis,
                     )
                 }
-                IconButton(onClick = onRefresh) {
-                    Icon(Icons.Filled.Refresh, null)
+                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                    FilledIconButton(onClick = onPlay) {
+                        Icon(Icons.Filled.PlayArrow, null)
+                    }
+                    IconButton(
+                        onClick = onRefresh,
+                        modifier = Modifier.size(32.dp),
+                    ) {
+                        Icon(
+                            Icons.Filled.Refresh, null,
+                            modifier = Modifier.size(16.dp),
+                        )
+                    }
                 }
             }
         }
@@ -277,25 +261,44 @@ private fun DailyMixCard(
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun MoodMixCard(
+    context: ViewContext,
     mix: CustomMix,
     onClick: () -> Unit,
     onEdit: () -> Unit,
 ) {
+    var coverIds by remember(mix.prompt) { mutableStateOf<List<String>>(emptyList()) }
+    LaunchedEffect(mix.prompt) {
+        coverIds = context.symphony.recommendation.getMixCoverSongIds(mix)
+    }
     ElevatedCard(
         modifier = Modifier.size(width = 120.dp, height = 120.dp),
         onClick = onClick,
     ) {
         Box(modifier = Modifier.fillMaxSize()) {
+            MixCoverCollage(context, coverIds, Modifier.matchParentSize())
+            Box(
+                modifier = Modifier
+                    .matchParentSize()
+                    .background(
+                        Brush.verticalGradient(
+                            colors = listOf(
+                                Color.Transparent,
+                                Color.Black.copy(alpha = 0.75f),
+                            ),
+                        )
+                    )
+            )
             Column(
                 modifier = Modifier
                     .fillMaxSize()
-                    .padding(12.dp),
+                    .padding(10.dp),
                 verticalArrangement = Arrangement.SpaceBetween,
             ) {
-                Text(mix.icon, style = MaterialTheme.typography.headlineMedium)
+                Text(mix.icon, style = MaterialTheme.typography.titleLarge)
                 Text(
                     mix.name,
                     style = MaterialTheme.typography.titleSmall,
+                    color = Color.White,
                     maxLines = 2,
                     overflow = TextOverflow.Ellipsis,
                 )
@@ -307,7 +310,7 @@ private fun MoodMixCard(
                 Icon(
                     Icons.Filled.Edit, null,
                     modifier = Modifier.size(14.dp),
-                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                    tint = Color.White,
                 )
             }
         }
@@ -518,5 +521,58 @@ private fun MixEditorDialog(
                 TextButton(onClick = onDismiss) { Text("Cancel") }
             }
         },
+    )
+}
+
+@Composable
+fun MixCoverCollage(
+    context: ViewContext,
+    songIds: List<String>,
+    modifier: Modifier = Modifier,
+) {
+    val songs = remember(songIds) {
+        songIds.mapNotNull { context.symphony.groove.song.get(it) }.take(4)
+    }
+    Box(modifier = modifier) {
+        // پسزمینه گرادیان — فقط وقتی دیده میشه که هیچ کاوری نباشه
+        Box(
+            modifier = Modifier
+                .matchParentSize()
+                .background(
+                    Brush.linearGradient(
+                        colors = listOf(
+                            MaterialTheme.colorScheme.primaryContainer,
+                            MaterialTheme.colorScheme.tertiaryContainer,
+                        ),
+                    )
+                )
+        )
+        when {
+            songs.size >= 4 -> Column(modifier = Modifier.matchParentSize()) {
+                Row(modifier = Modifier.weight(1f)) {
+                    CollageTile(context, songs[0], Modifier.weight(1f))
+                    CollageTile(context, songs[1], Modifier.weight(1f))
+                }
+                Row(modifier = Modifier.weight(1f)) {
+                    CollageTile(context, songs[2], Modifier.weight(1f))
+                    CollageTile(context, songs[3], Modifier.weight(1f))
+                }
+            }
+            songs.isNotEmpty() -> CollageTile(context, songs[0], Modifier.matchParentSize())
+        }
+    }
+}
+
+@Composable
+private fun CollageTile(
+    context: ViewContext,
+    song: io.github.zyrouge.symphony.services.groove.Song,
+    modifier: Modifier = Modifier,
+) {
+    AsyncImage(
+        song.createArtworkImageRequest(context.symphony).build(),
+        null,
+        contentScale = ContentScale.Crop,
+        modifier = modifier.fillMaxSize(),
     )
 }
