@@ -109,6 +109,39 @@ class AudioDecoder(private val context: Context) {
         return 0
     }
 
+    /** یک بازه دلخواه از فایل رو decode میکنه — خروجی مونو 48kHz */
+    fun decodeRange(uri: Uri, offsetSeconds: Int, durationSeconds: Int): FloatArray? {
+        val extractor = MediaExtractor()
+        try {
+            extractor.setDataSource(context, uri, null)
+        } catch (e: Exception) {
+            Log.e("AudioDecoder", "Failed to set data source for $uri", e)
+            return null
+        }
+
+        var trackIndex = -1
+        var sampleRate = 48000
+        var channelCount = 1
+        for (i in 0 until extractor.trackCount) {
+            val format = extractor.getTrackFormat(i)
+            val mime = format.getString(MediaFormat.KEY_MIME) ?: continue
+            if (mime.startsWith("audio/")) {
+                trackIndex = i
+                sampleRate = format.getInteger(MediaFormat.KEY_SAMPLE_RATE)
+                channelCount = format.getInteger(MediaFormat.KEY_CHANNEL_COUNT)
+                break
+            }
+        }
+        if (trackIndex < 0) {
+            extractor.release()
+            return null
+        }
+
+        val floats = decodeChunk(extractor, trackIndex, offsetSeconds, durationSeconds, channelCount, sampleRate)
+        extractor.release()
+        return floats?.let { resampleTo48k(it, sampleRate) }
+    }
+
     private fun decodeChunk(
         extractor: MediaExtractor,
         trackIndex: Int,

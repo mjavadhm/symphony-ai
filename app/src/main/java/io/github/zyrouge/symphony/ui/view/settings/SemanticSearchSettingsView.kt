@@ -14,6 +14,7 @@ import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.DataObject
 import androidx.compose.material.icons.filled.Psychology
 import androidx.compose.material.icons.filled.Upload
+import androidx.compose.material.icons.filled.Waves
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.material3.CenterAlignedTopAppBar
@@ -244,6 +245,44 @@ fun SemanticSearchSettingsView(context: ViewContext) {
                                     context.navController.navigate(io.github.zyrouge.symphony.ui.view.settings.IndexSongsSettingsRoute)
                                 }
                             )
+                        }
+                    }
+
+                    HorizontalDivider()
+                    SettingsSideHeading("Flow Transitions")
+                    val flowScanState by context.symphony.flow.scanState.collectAsState()
+                    SettingsSimpleTile(
+                        icon = { Icon(Icons.Filled.Waves, null) },
+                        title = {
+                            Text(
+                                if (flowScanState.isActive)
+                                    "Analyzing… ${flowScanState.done}/${flowScanState.total} (tap to cancel)"
+                                else "Analyze songs for Flow"
+                            )
+                        },
+                        onClick = {
+                            if (flowScanState.isActive) context.symphony.flow.stopScan()
+                            else context.symphony.flow.startScan()
+                        }
+                    )
+                    if (flowScanState.isActive || flowScanState.text.isNotEmpty()) {
+                        androidx.compose.material3.Card(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = 16.dp, vertical = 6.dp)
+                        ) {
+                            Column(modifier = Modifier.padding(16.dp)) {
+                                if (flowScanState.isActive) {
+                                    androidx.compose.material3.LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
+                                    androidx.compose.foundation.layout.Spacer(Modifier.padding(8.dp))
+                                }
+                                Text(
+                                    flowScanState.text,
+                                    style = androidx.compose.material3.MaterialTheme.typography.bodySmall,
+                                    maxLines = 1,
+                                    overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
+                                )
+                            }
                         }
                     }
                 }

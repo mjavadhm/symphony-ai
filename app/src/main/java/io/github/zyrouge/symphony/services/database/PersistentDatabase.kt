@@ -18,10 +18,12 @@ import io.github.zyrouge.symphony.services.database.entities.MixContext
 import io.github.zyrouge.symphony.services.database.store.MixContextStore
 import io.github.zyrouge.symphony.services.database.entities.MixFeedback
 import io.github.zyrouge.symphony.services.database.store.MixFeedbackStore
+import io.github.zyrouge.symphony.services.database.entities.TrackFlow
+import io.github.zyrouge.symphony.services.database.store.TrackFlowStore
 
 @Database(
-    entities = [Playlist::class, PlaybackHistory::class, CustomMix::class, MixContext::class, MixFeedback::class],
-    version = 6,
+    entities = [Playlist::class, PlaybackHistory::class, CustomMix::class, MixContext::class, MixFeedback::class, TrackFlow::class],
+    version = 7,
     exportSchema = false
 )
 @TypeConverters(RoomConvertors::class)
@@ -31,6 +33,7 @@ abstract class PersistentDatabase : RoomDatabase() {
     abstract fun customMixes(): CustomMixStore
     abstract fun mixContexts(): MixContextStore
     abstract fun mixFeedback(): MixFeedbackStore
+    abstract fun trackFlow(): TrackFlowStore
 
     companion object {
         val MIGRATION_TELEMETRY_V3 = object : Migration(4, 5) {
@@ -65,13 +68,27 @@ abstract class PersistentDatabase : RoomDatabase() {
             }
         }
 
+        val MIGRATION_FLOW_V1 = object : Migration(6, 7) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL(
+                    "CREATE TABLE IF NOT EXISTS track_flow (" +
+                            "songId TEXT PRIMARY KEY NOT NULL, " +
+                            "headEnergy REAL NOT NULL, headCentroid REAL NOT NULL, " +
+                            "headRolloff REAL NOT NULL, headOnset REAL NOT NULL, " +
+                            "tailEnergy REAL NOT NULL, tailCentroid REAL NOT NULL, " +
+                            "tailRolloff REAL NOT NULL, tailOnset REAL NOT NULL, " +
+                            "analyzedAt INTEGER NOT NULL)"
+                )
+            }
+        }
+
         fun create(symphony: Symphony) = Room
             .databaseBuilder(
                 symphony.applicationContext,
                 PersistentDatabase::class.java,
                 "persistent"
             )
-            .addMigrations(MIGRATION_TELEMETRY_V3, MIGRATION_MIXES_V2)
+            .addMigrations(MIGRATION_TELEMETRY_V3, MIGRATION_MIXES_V2, MIGRATION_FLOW_V1)
             .fallbackToDestructiveMigration()
             .build()
     }

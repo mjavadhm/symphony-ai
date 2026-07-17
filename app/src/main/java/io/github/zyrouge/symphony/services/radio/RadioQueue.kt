@@ -69,6 +69,23 @@ class RadioQueue(private val symphony: Symphony) {
         }
     }
 
+    fun applyFlowOrder() {
+        val ids = currentQueue.toList()
+        if (ids.size <= 2) return
+        val currentSongId = ids.getOrNull(currentSongIndex)
+        symphony.groove.coroutineScope.launch {
+            val ordered = try {
+                symphony.flow.orderByFlow(ids, currentSongId)
+            } catch (err: Exception) {
+                return@launch
+            }
+            currentQueue.clear()
+            currentQueue.addAll(ordered)
+            currentSongIndex = 0
+            symphony.radio.onUpdate.dispatch(Radio.Events.Queue.Modified)
+        }
+    }
+
     val currentSongId: String?
         get() = getSongIdAt(currentSongIndex)
 

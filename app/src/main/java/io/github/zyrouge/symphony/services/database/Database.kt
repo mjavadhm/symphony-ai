@@ -16,4 +16,5 @@ class Database(symphony: Symphony) {
     val customMixes get() = persistent.customMixes()
     val mixContexts get() = persistent.mixContexts()
     val mixFeedback get() = persistent.mixFeedback()
+    val trackFlow get() = persistent.trackFlow()
 }

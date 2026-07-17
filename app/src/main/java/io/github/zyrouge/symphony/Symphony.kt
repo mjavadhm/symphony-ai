@@ -31,6 +31,7 @@ class Symphony(application: Application) : AndroidViewModel(application), Sympho
     val translator = Translator(this)
     val semanticSearch = io.github.zyrouge.symphony.services.search.SemanticSearchEngine(this)
     val recommendation = io.github.zyrouge.symphony.services.recommendation.RecommendationEngine(this)
+    val flow = io.github.zyrouge.symphony.services.flow.FlowAnalyzer(this)
 
     var t by mutableStateOf(translator.getCurrentTranslation())
 

@@ -23,6 +23,7 @@ import androidx.compose.material.icons.filled.ClearAll
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.ExpandMore
 import androidx.compose.material.icons.filled.Save
+import androidx.compose.material.icons.filled.Waves
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -112,6 +113,22 @@ fun QueueView(context: ViewContext) {
                                     overflow = TextOverflow.Ellipsis,
                                     modifier = Modifier.padding(horizontal = 20.dp),
                                 )
+                            }
+                        }
+                        GlassSurface(
+                            modifier = Modifier.size(44.dp),
+                            shape = CircleShape,
+                        ) {
+                            IconButton(
+                                modifier = Modifier.size(44.dp),
+                                onClick = {
+                                    context.symphony.radio.queue.applyFlowOrder()
+                                    coroutineScope.launch {
+                                        listState.animateScrollToItem(0)
+                                    }
+                                },
+                            ) {
+                                Icon(Icons.Filled.Waves, null)
                             }
                         }
                         GlassSurface(
