@@ -418,16 +418,11 @@ class RecommendationEngine(private val symphony: Symphony) {
             emptySet()
         }
 
-        // نگاشت مسیر فایل → شناسه آهنگ
-        val pathToSongId = HashMap<String, String>()
-        for (id in symphony.groove.song.all.value) {
-            symphony.groove.song.get(id)?.let { pathToSongId[it.path] = id }
-        }
-
         val results = symphony.semanticSearch.searchByVector(centroid, limit * 5)
         val picked = mutableListOf<String>()
-        for (result in results) {
-            val songId = pathToSongId[result.track.filePath] ?: continue
+        for (track in results) {
+            val path = track.filePath ?: continue
+            val songId = resolvePathToSongId(path) ?: continue
             if (songId in excludeSongIds || songId in skipped || songId in picked) continue
             picked.add(songId)
             if (picked.size >= limit) break
