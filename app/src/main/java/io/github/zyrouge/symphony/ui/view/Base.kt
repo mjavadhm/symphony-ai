@@ -119,6 +119,9 @@ fun BaseView(symphony: Symphony, activity: MainActivity) {
                 baseComposable<io.github.zyrouge.symphony.ui.view.settings.RecommendationSettingsRoute> {
                     io.github.zyrouge.symphony.ui.view.settings.RecommendationSettings(context)
                 }
+                baseComposable<io.github.zyrouge.symphony.ui.view.settings.LibraryStatsRoute> {
+                    io.github.zyrouge.symphony.ui.view.settings.LibraryStatsView(context)
+                }
             }
         }
     }
