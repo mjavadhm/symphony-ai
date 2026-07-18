@@ -17,9 +17,8 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
-import androidx.compose.material3.TopAppBar
+import io.github.zyrouge.symphony.ui.components.GlassSettingsScaffold
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -66,21 +65,18 @@ fun LibraryStatsView(context: ViewContext) {
 
     val totalSongs = allSongIds.size
 
-    Scaffold(
-        topBar = {
-            TopAppBar(
-                title = { Text("Library Stats") },
-                navigationIcon = {
-                    IconButton(onClick = { context.navController.popBackStack() }) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, null)
-                    }
-                },
-                actions = {
-                    IconButton(onClick = { coroutineScope.launch { reload() } }) {
-                        Icon(Icons.Filled.Refresh, null)
-                    }
-                },
-            )
+    GlassSettingsScaffold(
+        context,
+        title = "Library Stats",
+        topBarActions = {
+            io.github.zyrouge.symphony.ui.components.GlassSurface(
+                modifier = Modifier.width(44.dp).padding(4.dp),
+                shape = androidx.compose.foundation.shape.CircleShape,
+            ) {
+                IconButton(onClick = { coroutineScope.launch { reload() } }) {
+                    Icon(Icons.Filled.Refresh, null)
+                }
+            }
         },
     ) { contentPadding ->
         Column(

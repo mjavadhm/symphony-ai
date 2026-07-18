@@ -20,10 +20,10 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
-import androidx.compose.material3.TopAppBar
+import io.github.zyrouge.symphony.ui.components.GlassSettingsScaffold
+import io.github.zyrouge.symphony.ui.components.GlassChip
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -58,17 +58,9 @@ fun LlmSettingsView(context: ViewContext) {
     var chatBehaviorTpl by remember { mutableStateOf(llm.chatBehavior) }
     var chatStructureTpl by remember { mutableStateOf(llm.chatStructure) }
 
-    Scaffold(
-        topBar = {
-            TopAppBar(
-                title = { Text("AI Provider") },
-                navigationIcon = {
-                    IconButton(onClick = { context.navController.popBackStack() }) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, null)
-                    }
-                },
-            )
-        },
+    GlassSettingsScaffold(
+        context,
+        title = "AI Provider",
     ) { padding ->
         Column(
             modifier = Modifier
@@ -115,11 +107,12 @@ fun LlmSettingsView(context: ViewContext) {
                     LlmClient.UsageMode.Manual,
                     LlmClient.UsageMode.Auto,
                 ).forEach { m ->
-                    FilterChip(
+                    GlassChip(
                         selected = mode == m,
                         onClick = { mode = m; llm.usageMode = m },
-                        label = { Text(m.name) },
-                    )
+                    ) {
+                        Text(m.name)
+                    }
                 }
             }
             Text(

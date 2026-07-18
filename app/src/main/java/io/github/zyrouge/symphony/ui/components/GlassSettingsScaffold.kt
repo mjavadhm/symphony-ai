@@ -38,6 +38,7 @@ fun GlassSettingsScaffold(
     title: String,
     snackbarHost: @Composable () -> Unit = {},
     floatingActionButton: @Composable () -> Unit = {},
+    topBarActions: (@Composable () -> Unit)? = null,
     content: @Composable (PaddingValues) -> Unit,
 ) {
     val hazeState = remember { HazeState() }
@@ -87,7 +88,10 @@ fun GlassSettingsScaffold(
                                 )
                             }
                         }
-                        Spacer(modifier = Modifier.width(44.dp))
+                        when (topBarActions) {
+                            null -> Spacer(modifier = Modifier.width(44.dp))
+                            else -> topBarActions()
+                        }
                     }
                 },
                 content = { contentPadding ->

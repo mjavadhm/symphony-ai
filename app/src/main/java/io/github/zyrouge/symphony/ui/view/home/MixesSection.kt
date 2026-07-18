@@ -623,6 +623,12 @@ private fun MixEditorDialog(
                         }
                     }) { Text("Delete", color = MaterialTheme.colorScheme.error) }
                 }
+                if (existing != null && context.symphony.llm.isConfigured) {
+                    TextButton(onClick = {
+                        onDismiss()
+                        context.navController.navigate(io.github.zyrouge.symphony.ui.view.DiscoverChatRoute(editMixId = existing.id))
+                    }) { Text("💬 Refine in chat") }
+                }
                 TextButton(onClick = onDismiss) { Text("Cancel") }
             }
         },

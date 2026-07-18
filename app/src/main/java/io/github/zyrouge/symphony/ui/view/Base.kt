@@ -116,8 +116,8 @@ fun BaseView(symphony: Symphony, activity: MainActivity) {
                 baseComposable<io.github.zyrouge.symphony.ui.view.settings.BackupSettingsViewRoute> {
                     io.github.zyrouge.symphony.ui.view.settings.BackupSettingsView(context)
                 }
-                baseComposable<io.github.zyrouge.symphony.ui.view.DiscoverChatRoute> {
-                    io.github.zyrouge.symphony.ui.view.DiscoverChatView(context)
+                baseComposable<io.github.zyrouge.symphony.ui.view.DiscoverChatRoute> { backStackEntry ->
+                    io.github.zyrouge.symphony.ui.view.DiscoverChatView(context, backStackEntry.toRoute())
                 }
                 baseComposable<io.github.zyrouge.symphony.ui.view.settings.RecommendationSettingsRoute> {
                     io.github.zyrouge.symphony.ui.view.settings.RecommendationSettings(context)

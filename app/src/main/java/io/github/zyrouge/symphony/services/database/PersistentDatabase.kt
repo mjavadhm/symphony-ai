@@ -21,9 +21,13 @@ import io.github.zyrouge.symphony.services.database.store.MixFeedbackStore
 import io.github.zyrouge.symphony.services.database.entities.TrackFlow
 import io.github.zyrouge.symphony.services.database.store.TrackFlowStore
 
+import io.github.zyrouge.symphony.services.database.entities.ChatSession
+import io.github.zyrouge.symphony.services.database.entities.ChatMessage
+import io.github.zyrouge.symphony.services.database.store.ChatStore
+
 @Database(
-    entities = [Playlist::class, PlaybackHistory::class, CustomMix::class, MixContext::class, MixFeedback::class, TrackFlow::class],
-    version = 8,
+    entities = [Playlist::class, PlaybackHistory::class, CustomMix::class, MixContext::class, MixFeedback::class, TrackFlow::class, ChatSession::class, ChatMessage::class],
+    version = 9,
     exportSchema = false
 )
 @TypeConverters(RoomConvertors::class)
@@ -34,6 +38,7 @@ abstract class PersistentDatabase : RoomDatabase() {
     abstract fun mixContexts(): MixContextStore
     abstract fun mixFeedback(): MixFeedbackStore
     abstract fun trackFlow(): TrackFlowStore
+    abstract fun chats(): ChatStore
 
     companion object {
         val MIGRATION_TELEMETRY_V3 = object : Migration(4, 5) {
@@ -93,13 +98,33 @@ abstract class PersistentDatabase : RoomDatabase() {
             }
         }
 
+        val MIGRATION_CHAT_V1 = object : Migration(8, 9) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL(
+                    "CREATE TABLE IF NOT EXISTS chat_sessions (" +
+                        "id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, " +
+                        "title TEXT NOT NULL, " +
+                        "createdAt INTEGER NOT NULL, updatedAt INTEGER NOT NULL)"
+                )
+                db.execSQL(
+                    "CREATE TABLE IF NOT EXISTS chat_messages (" +
+                        "id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, " +
+                        "sessionId INTEGER NOT NULL, " +
+                        "kind TEXT NOT NULL, text TEXT NOT NULL, " +
+                        "prompts TEXT NOT NULL DEFAULT '', " +
+                        "songIds TEXT NOT NULL DEFAULT '', " +
+                        "createdAt INTEGER NOT NULL)"
+                )
+            }
+        }
+
         fun create(symphony: Symphony) = Room
             .databaseBuilder(
                 symphony.applicationContext,
                 PersistentDatabase::class.java,
                 "persistent"
             )
-            .addMigrations(MIGRATION_TELEMETRY_V3, MIGRATION_MIXES_V2, MIGRATION_FLOW_V1, MIGRATION_MIX_PROMPTS_V1)
+            .addMigrations(MIGRATION_TELEMETRY_V3, MIGRATION_MIXES_V2, MIGRATION_FLOW_V1, MIGRATION_MIX_PROMPTS_V1, MIGRATION_CHAT_V1)
             .fallbackToDestructiveMigration()
             .build()
     }

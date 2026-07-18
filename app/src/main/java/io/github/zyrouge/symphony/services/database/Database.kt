@@ -17,4 +17,5 @@ class Database(symphony: Symphony) {
     val mixContexts get() = persistent.mixContexts()
     val mixFeedback get() = persistent.mixFeedback()
     val trackFlow get() = persistent.trackFlow()
+    val chats get() = persistent.chats()
 }

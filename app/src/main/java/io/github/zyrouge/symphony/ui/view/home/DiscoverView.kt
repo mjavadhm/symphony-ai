@@ -68,25 +68,23 @@ fun DiscoverView(context: ViewContext) {
                 if (context.symphony.llm.isConfigured &&
                     context.symphony.llm.usageMode != io.github.zyrouge.symphony.services.llm.LlmClient.UsageMode.Off
                 ) {
-                    ElevatedCard(
+                    GlassSurface(
                         modifier = Modifier
-                            .fillMaxWidth(),
+                            .fillMaxWidth()
+                            .padding(horizontal = 14.dp, vertical = 6.dp),
+                        shape = RoundedCornerShape(20.dp),
                     ) {
                         Row(
+                            verticalAlignment = Alignment.CenterVertically,
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .clickable {
-                                    context.navController.navigate(
-                                        io.github.zyrouge.symphony.ui.view.DiscoverChatRoute
-                                    )
-                                }
-                                .padding(16.dp),
-                            verticalAlignment = Alignment.CenterVertically,
+                                .clickable { context.navController.navigate(io.github.zyrouge.symphony.ui.view.DiscoverChatRoute()) }
+                                .padding(14.dp),
                         ) {
                             Text("💬", style = MaterialTheme.typography.headlineSmall)
                             Spacer(modifier = Modifier.width(12.dp))
                             Column {
-                                Text("Chat with AI", style = MaterialTheme.typography.titleMedium)
+                                Text("Chat with AI", style = MaterialTheme.typography.titleSmall)
                                 Text(
                                     "Describe what you want, give feedback, refine",
                                     style = MaterialTheme.typography.bodySmall,
