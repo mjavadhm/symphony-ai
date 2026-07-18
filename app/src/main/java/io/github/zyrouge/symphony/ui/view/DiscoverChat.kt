@@ -1,4 +1,4 @@
-﻿package io.github.zyrouge.symphony.ui.view
+package io.github.zyrouge.symphony.ui.view
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -26,6 +26,7 @@ import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -135,7 +136,7 @@ fun DiscoverChatView(context: ViewContext, route: DiscoverChatRoute) {
         chatStore.touchSession(sid, System.currentTimeMillis())
     }
 
-    // Ø¨Ø§Ø²ÛŒØ§Ø¨ÛŒ Ú†Øª Ù‚Ø¨Ù„ÛŒ Ùˆ/ÛŒØ§ Ú©Ø§Ù†ØªÚ©Ø³Øª ÙˆÛŒØ±Ø§ÛŒØ´ Ù…ÛŒÚ©Ø³
+    // بازیابی چت قبلی و/یا کانتکست ویرایش میکس
     LaunchedEffect(Unit) {
         if (route.sessionId >= 0) {
             sessionId = route.sessionId
@@ -178,7 +179,7 @@ fun DiscoverChatView(context: ViewContext, route: DiscoverChatRoute) {
                     )
                     items.add(
                         ChatItem.BotMsg(
-                            "Editing \"${mix.icon} ${mix.name}\" â€” tell me what to change " +
+                            "Editing \"${mix.icon} ${mix.name}\" — tell me what to change " +
                                     "and I'll rework its prompts."
                         )
                     )
@@ -203,7 +204,7 @@ fun DiscoverChatView(context: ViewContext, route: DiscoverChatRoute) {
             streamingText = null
             when (action) {
                 is DiscoverChatAction.Failed -> items.add(
-                    ChatItem.BotMsg("âš ï¸ ${action.message}")
+                    ChatItem.BotMsg("⚠️ ${action.message}")
                 )
 
                 is DiscoverChatAction.Ask -> {
@@ -278,7 +279,7 @@ fun DiscoverChatView(context: ViewContext, route: DiscoverChatRoute) {
                 if (items.isEmpty()) {
                     item {
                         BotBubble(
-                            "Tell me what you're in the mood for â€” a genre, a feeling, " +
+                            "Tell me what you're in the mood for — a genre, a feeling, " +
                                     "a moment. I'll dig through your library and we can " +
                                     "refine it together."
                         )
@@ -317,13 +318,13 @@ fun DiscoverChatView(context: ViewContext, route: DiscoverChatRoute) {
                                     )
                                     Spacer(modifier = Modifier.width(8.dp))
                                     Text(
-                                        "Thinkingâ€¦",
+                                        "Thinking…",
                                         style = MaterialTheme.typography.bodySmall,
                                     )
                                 }
                             }
                         } else {
-                            BotBubble("$streamedâ–Œ")
+                            BotBubble(streamed + "\u258C")
                         }
                     }
                 }
@@ -342,7 +343,7 @@ fun DiscoverChatView(context: ViewContext, route: DiscoverChatRoute) {
                     TextField(
                         value = input,
                         onValueChange = { input = it },
-                        placeholder = { Text("Describe what you wantâ€¦") },
+                        placeholder = { Text("Describe what you want…") },
                         maxLines = 4,
                         colors = TextFieldDefaults.colors(
                             focusedContainerColor = Color.Transparent,
@@ -396,6 +397,7 @@ fun DiscoverChatView(context: ViewContext, route: DiscoverChatRoute) {
     }
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun ChatHistorySheet(
     context: ViewContext,
@@ -524,7 +526,7 @@ private fun ResultsBlock(
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
         BotBubble(item.text)
         if (item.songIds.isEmpty()) {
-            BotBubble("No matches found in your library â€” try describing it differently.")
+            BotBubble("No matches found in your library — try describing it differently.")
             return
         }
         GlassSurface(
@@ -592,7 +594,7 @@ private fun ResultsBlock(
                                     updated = true
                                 }
                             },
-                        ) { Text(if (updated) "Updated âœ“" else "Update mix") }
+                        ) { Text(if (updated) "Updated ✓" else "Update mix") }
 
                         else -> TextButton(onClick = onSaveAsMix) { Text("Save as Mix") }
                     }
@@ -611,7 +613,7 @@ private fun SaveAsMixDialog(
 ) {
     val coroutineScope = rememberCoroutineScope()
     var name by remember { mutableStateOf("") }
-    var icon by remember { mutableStateOf("ðŸ’¬") }
+    var icon by remember { mutableStateOf("💬") }
 
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -647,7 +649,7 @@ private fun SaveAsMixDialog(
                         context.symphony.database.customMixes.insert(
                             CustomMix(
                                 name = name.trim(),
-                                icon = icon.ifBlank { "ðŸ’¬" },
+                                icon = icon.ifBlank { "💬" },
                                 prompt = results.prompts.firstOrNull() ?: "",
                                 prompts = results.prompts.joinToString("\n"),
                                 description = description.take(200),
@@ -674,8 +676,9 @@ private suspend fun runDiscoverSearch(
     for (prompt in prompts) {
         val results = context.symphony.semanticSearch.searchDetailed(prompt, per)
         for (r in results) {
+            val path = r.track.filePath ?: continue
             context.symphony.recommendation
-                .resolvePathToSongId(r.track.filePath)
+                .resolvePathToSongId(path)
                 ?.let { ids.add(it) }
         }
     }
