@@ -42,23 +42,34 @@ class LlmClient(private val symphony: Symphony) {
             "You name music playlists. Reply with ONLY the playlist name: " +
                     "2 to 4 words, in English, no quotes, no emoji, no explanations."
 
-        val DEFAULT_DISCOVER_CHAT_SYSTEM = """
-            You help the user build a playlist from their local music library by chatting with them.
+        val DEFAULT_CHAT_BEHAVIOR = """
+            You are a friendly, opinionated music companion helping the user build playlists from their local library.
+            Talk naturally in 1-3 sentences — not telegraphic.
+            Say what direction you searched and why, offer opinions, and invite feedback
+            (e.g. "if these feel too calm, I can raise the tempo").
+            If the request is vague, make a reasonable guess, search, and confirm — don't interrogate.
+            Write in the same language the user writes in.
+        """.trimIndent()
+
+        val DEFAULT_CHAT_STRUCTURE = """
             You cannot see or pick songs directly. Songs are found by CLAP, a model that matches English text prompts to music audio.
             Every turn, reply with ONLY a JSON object, no markdown:
-            - Need more info? {"action":"ask","reply":"<one short question>"}
-            - Ready to search? {"action":"search","reply":"<one short sentence>","prompts":["...","..."]}
+            - Need more info? {"action":"ask","reply":"<your message>"}
+            - Ready to search? {"action":"search","reply":"<your message>","prompts":["...","..."]}
             Prompt rules: 2-4 prompts, English only, describe sound (genre, mood, tempo, instruments, vocals), under 12 words each, meaningfully different.
             When the user gives feedback on results, refine the prompts.
-            Write "reply" in the same language the user writes in.
-            Prefer searching early and refining, instead of asking many questions.
         """.trimIndent()
     }
 
-    var discoverChatSystem: String
-        get() = prefs.getString("tpl_discover_chat", null)
-            ?.takeIf { it.isNotBlank() } ?: DEFAULT_DISCOVER_CHAT_SYSTEM
-        set(v) = prefs.edit().putString("tpl_discover_chat", v).apply()
+    var chatBehavior: String
+        get() = prefs.getString("tpl_chat_behavior", null)
+            ?.takeIf { it.isNotBlank() } ?: DEFAULT_CHAT_BEHAVIOR
+        set(v) = prefs.edit().putString("tpl_chat_behavior", v).apply()
+
+    var chatStructure: String
+        get() = prefs.getString("tpl_chat_structure", null)
+            ?.takeIf { it.isNotBlank() } ?: DEFAULT_CHAT_STRUCTURE
+        set(v) = prefs.edit().putString("tpl_chat_structure", v).apply()
 
     var mixPromptsSystem: String
         get() = prefs.getString("tpl_mix_prompts", null)
@@ -149,6 +160,85 @@ class LlmClient(private val symphony: Symphony) {
             Result.Success(content)
         } catch (e: Exception) {
             Logger.error("LlmClient", "request failed", e)
+            Result.Error(e.message ?: "Unknown error")
+        }
+    }
+
+    /**
+     * مثل completeMessages ولی با stream: true.
+     * هر تکه متن که از مدل میاد، همون لحظه به onDelta داده میشه.
+     * آخر کار، کل متن جمع‌شده به عنوان Success برمیگرده.
+     */
+    suspend fun completeMessagesStreaming(
+        system: String,
+        messages: List<Pair<String, String>>,
+        temperature: Float = 0.9f,
+        onDelta: (String) -> Unit,
+    ): Result = withContext(Dispatchers.IO) {
+        if (!isConfigured) {
+            return@withContext Result.Error("LLM is not configured")
+        }
+        try {
+            val messagesJson = JSONArray()
+                .put(JSONObject().put("role", "system").put("content", system))
+            for ((role, content) in messages) {
+                messagesJson.put(JSONObject().put("role", role).put("content", content))
+            }
+            val body = JSONObject()
+                .put("model", model)
+                .put("temperature", temperature.toDouble())
+                .put("stream", true)
+                .put("messages", messagesJson)
+
+            val conn = URL("$baseUrl/chat/completions")
+                .openConnection() as HttpURLConnection
+            conn.requestMethod = "POST"
+            conn.connectTimeout = 15_000
+            conn.readTimeout = 120_000
+            conn.setRequestProperty("Content-Type", "application/json")
+            conn.setRequestProperty("Accept", "text/event-stream")
+            if (apiKey.isNotBlank()) {
+                conn.setRequestProperty("Authorization", "Bearer $apiKey")
+            }
+            conn.doOutput = true
+            conn.outputStream.use {
+                it.write(body.toString().toByteArray(Charsets.UTF_8))
+            }
+
+            val code = conn.responseCode
+            if (code !in 200..299) {
+                val err = conn.errorStream?.bufferedReader()?.use { it.readText() } ?: ""
+                conn.disconnect()
+                return@withContext Result.Error("HTTP $code: ${err.take(200)}")
+            }
+
+            // فرمت SSE: هر خط مفید با "data:" شروع میشه و آخرش [DONE] میاد
+            val full = StringBuilder()
+            conn.inputStream.bufferedReader().useLines { lines ->
+                for (line in lines) {
+                    if (!line.startsWith("data:")) continue
+                    val data = line.removePrefix("data:").trim()
+                    if (data == "[DONE]") break
+                    val delta = try {
+                        JSONObject(data)
+                            .getJSONArray("choices")
+                            .getJSONObject(0)
+                            .optJSONObject("delta")
+                            ?.optString("content")
+                            ?: ""
+                    } catch (e: Exception) {
+                        ""
+                    }
+                    if (delta.isNotEmpty()) {
+                        full.append(delta)
+                        onDelta(delta)
+                    }
+                }
+            }
+            conn.disconnect()
+            Result.Success(full.toString())
+        } catch (e: Exception) {
+            Logger.error("LlmClient", "stream request failed", e)
             Result.Error(e.message ?: "Unknown error")
         }
     }

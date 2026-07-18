@@ -55,7 +55,8 @@ fun LlmSettingsView(context: ViewContext) {
     var isTesting by remember { mutableStateOf(false) }
     var mixPromptsTpl by remember { mutableStateOf(llm.mixPromptsSystem) }
     var nameMixTpl by remember { mutableStateOf(llm.nameMixSystem) }
-    var discoverTpl by remember { mutableStateOf(llm.discoverChatSystem) }
+    var chatBehaviorTpl by remember { mutableStateOf(llm.chatBehavior) }
+    var chatStructureTpl by remember { mutableStateOf(llm.chatStructure) }
 
     Scaffold(
         topBar = {
@@ -148,14 +149,46 @@ fun LlmSettingsView(context: ViewContext) {
 
             Divider()
 
-            Text("Task prompts (advanced)", style = MaterialTheme.typography.titleMedium)
+            Text("Chat personality", style = MaterialTheme.typography.titleMedium)
             Text(
-                "These system prompts are sent to the model for each task. " +
-                        "Edit them to change the style of the results. " +
-                        "Keep the JSON instruction, or parsing will fail.",
+                "Safe to edit: tone, verbosity, opinions, language. " +
+                        "Format rules live in the advanced section below.",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
+            OutlinedTextField(
+                value = chatBehaviorTpl,
+                onValueChange = { chatBehaviorTpl = it; llm.chatBehavior = it },
+                label = { Text("Chat personality") },
+                modifier = Modifier.fillMaxWidth(),
+                minLines = 4,
+            )
+            TextButton(onClick = {
+                llm.chatBehavior = ""
+                chatBehaviorTpl = llm.chatBehavior
+            }) { Text("Reset to default") }
+
+            Divider()
+
+            Text("⚠️ Advanced — output formats", style = MaterialTheme.typography.titleMedium)
+            Text(
+                "These define the exact structure the app parses. Breaking them won't " +
+                        "crash anything — chat falls back to plain text and tasks may fail — " +
+                        "but features stop working until you fix or reset them.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            OutlinedTextField(
+                value = chatStructureTpl,
+                onValueChange = { chatStructureTpl = it; llm.chatStructure = it },
+                label = { Text("Chat output format") },
+                modifier = Modifier.fillMaxWidth(),
+                minLines = 5,
+            )
+            TextButton(onClick = {
+                llm.chatStructure = ""
+                chatStructureTpl = llm.chatStructure
+            }) { Text("Reset to default") }
             OutlinedTextField(
                 value = mixPromptsTpl,
                 onValueChange = { mixPromptsTpl = it; llm.mixPromptsSystem = it },
@@ -177,17 +210,6 @@ fun LlmSettingsView(context: ViewContext) {
             TextButton(onClick = {
                 llm.nameMixSystem = ""
                 nameMixTpl = llm.nameMixSystem
-            }) { Text("Reset to default") }
-            OutlinedTextField(
-                value = discoverTpl,
-                onValueChange = { discoverTpl = it; llm.discoverChatSystem = it },
-                label = { Text("Discover chat") },
-                modifier = Modifier.fillMaxWidth(),
-                minLines = 5,
-            )
-            TextButton(onClick = {
-                llm.discoverChatSystem = ""
-                discoverTpl = llm.discoverChatSystem
             }) { Text("Reset to default") }
         }
     }

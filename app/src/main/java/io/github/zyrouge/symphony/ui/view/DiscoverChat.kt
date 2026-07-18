@@ -76,12 +76,13 @@ fun DiscoverChatView(context: ViewContext) {
     val llmHistory = remember { mutableListOf<ChatTurn>() }
     var input by remember { mutableStateOf("") }
     var isThinking by remember { mutableStateOf(false) }
+    var streamingText by remember { mutableStateOf<String?>(null) }
     var addToPlaylistFor by remember { mutableStateOf<List<String>?>(null) }
     var saveAsMixFor by remember { mutableStateOf<ChatItem.BotResults?>(null) }
     val listState = rememberLazyListState()
 
     // با هر پیام جدید، برو ته لیست
-    LaunchedEffect(items.size, isThinking) {
+    LaunchedEffect(items.size, isThinking, streamingText?.length) {
         kotlinx.coroutines.delay(80)
         val total = listState.layoutInfo.totalItemsCount
         if (total > 0) listState.animateScrollToItem(total - 1)
@@ -95,7 +96,12 @@ fun DiscoverChatView(context: ViewContext) {
         llmHistory.add(ChatTurn("user", text))
         coroutineScope.launch {
             isThinking = true
-            when (val action = context.symphony.llmTasks.discoverChat(llmHistory)) {
+            streamingText = null
+            val action = context.symphony.llmTasks.discoverChat(llmHistory) { delta ->
+                streamingText = (streamingText ?: "") + delta
+            }
+            streamingText = null
+            when (action) {
                 is DiscoverChatAction.Failed -> items.add(
                     ChatItem.BotMsg("⚠️ ${action.message}")
                 )
@@ -177,16 +183,18 @@ fun DiscoverChatView(context: ViewContext) {
                 }
                 if (isThinking) {
                     item {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            CircularProgressIndicator(
-                                modifier = Modifier.size(18.dp),
-                                strokeWidth = 2.dp,
-                            )
-                            Spacer(modifier = Modifier.width(8.dp))
-                            Text(
-                                "Thinking…",
-                                style = MaterialTheme.typography.bodySmall,
-                            )
+                        val streamed = streamingText
+                        if (streamed.isNullOrEmpty()) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                CircularProgressIndicator(
+                                    modifier = Modifier.size(18.dp),
+                                    strokeWidth = 2.dp,
+                                )
+                                Spacer(modifier = Modifier.width(8.dp))
+                                Text("Thinking…", style = MaterialTheme.typography.bodySmall)
+                            }
+                        } else {
+                            BotBubble("$streamed▌")
                         }
                     }
                 }

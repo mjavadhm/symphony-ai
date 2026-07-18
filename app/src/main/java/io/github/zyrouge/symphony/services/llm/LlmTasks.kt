@@ -63,11 +63,16 @@ class LlmTasks(private val symphony: Symphony) {
         }
     }
 
-    suspend fun discoverChat(history: List<ChatTurn>): DiscoverChatAction {
-        val result = client.completeMessages(
-            system = client.discoverChatSystem,
+    suspend fun discoverChat(
+        history: List<ChatTurn>,
+        onReplyDelta: (String) -> Unit = {},
+    ): DiscoverChatAction {
+        val extractor = ReplyStreamExtractor(onReplyDelta)
+        val result = client.completeMessagesStreaming(
+            system = client.chatBehavior + "\n\n" + client.chatStructure,
             messages = history.map { it.role to it.content },
             temperature = 0.7f,
+            onDelta = { extractor.feed(it) },
         )
         return when (result) {
             is LlmClient.Result.Error -> DiscoverChatAction.Failed(result.message)
@@ -117,6 +122,91 @@ class LlmTasks(private val symphony: Symphony) {
                 .mapNotNull { i -> arr.optString(i).takeIf { it.isNotBlank() } }
         } catch (e: Exception) {
             null
+        }
+    }
+}
+
+/**
+ * از توی استریم JSON، فقط محتوای فیلد "reply" رو زنده بیرون میکشه —
+ * پس کاربر متن رو تایپ‌شونده میبینه ولی JSON و پرامپت‌ها دیده نمیشن.
+ * اگه جواب اصلا JSON نبود (مثلا کاربر پرامپت ساختاری رو عوض کرده)،
+ * میره روی حالت خام و کل متن رو استریم میکنه. هیچوقت کرش نمیکنه.
+ */
+private class ReplyStreamExtractor(private val onDelta: (String) -> Unit) {
+    private val buffer = StringBuilder()
+    private var replyStart = -1
+    private var emitted = 0
+    private var plainMode = false
+    private var finished = false
+
+    fun feed(delta: String) {
+        if (finished) return
+        buffer.append(delta)
+
+        if (!plainMode && replyStart < 0) {
+            val i = buffer.indexOf("\"reply\"")
+            if (i >= 0) {
+                var j = i + 7
+                while (j < buffer.length && (buffer[j] == ':' || buffer[j].isWhitespace())) j++
+                if (j < buffer.length) {
+                    if (buffer[j] == '"') replyStart = j + 1
+                    else plainMode = true // ساختار غیرمنتظره
+                }
+            } else if (buffer.length > 24 && !buffer.contains("{")) {
+                plainMode = true // مدل JSON نداده؛ متن خام رو نشون بده
+            }
+        }
+
+        if (plainMode) {
+            if (buffer.length > emitted) {
+                onDelta(buffer.substring(emitted))
+                emitted = buffer.length
+            }
+            return
+        }
+        if (replyStart < 0) return
+
+        // از شروعِ reply جلو برو، escape ها رو باز کن، تا نقل‌قول بسته
+        val out = StringBuilder()
+        var k = replyStart
+        var decoded = 0
+        loop@ while (k < buffer.length) {
+            when (val c = buffer[k]) {
+                '\\' -> {
+                    if (k + 1 >= buffer.length) break@loop // escape ناقص؛ صبر کن
+                    val n = buffer[k + 1]
+                    var step = 2
+                    val ch = when (n) {
+                        'n' -> '\n'
+                        't' -> '\t'
+                        'u' -> {
+                            if (k + 5 >= buffer.length) break@loop
+                            step = 6
+                            buffer.substring(k + 2, k + 6)
+                                .toIntOrNull(16)?.toChar() ?: '?'
+                        }
+                        else -> n
+                    }
+                    decoded++
+                    if (decoded > emitted) out.append(ch)
+                    k += step
+                }
+
+                '"' -> {
+                    finished = true
+                    break@loop
+                }
+
+                else -> {
+                    decoded++
+                    if (decoded > emitted) out.append(c)
+                    k++
+                }
+            }
+        }
+        if (out.isNotEmpty()) {
+            onDelta(out.toString())
+            emitted = decoded
         }
     }
 }
