@@ -6,6 +6,7 @@ import io.github.zyrouge.symphony.services.database.entities.CustomMix
 import io.github.zyrouge.symphony.services.database.entities.MixContext
 import io.github.zyrouge.symphony.services.database.entities.MixFeedback
 import io.github.zyrouge.symphony.services.groove.Song
+import io.github.zyrouge.symphony.services.database.entities.promptList
 import io.github.zyrouge.symphony.utils.Logger
 import kotlin.math.ln
 import kotlin.math.pow
@@ -59,6 +60,9 @@ class RecommendationEngine(private val symphony: Symphony) {
     // Daily Mixes (چندتایی با خوشهبندی) — ماندگاری یکروزه
     // ---------------------------------------------------------------
     private var memoryCache: Pair<String, List<DailyMix>>? = null
+
+    // salt برای reroll؛ فقط توی حافظه. کلید = id میکس
+    private val mixSalts = mutableMapOf<Long, Long>()
 
     private fun todayKey(): String {
         val cal = java.util.Calendar.getInstance()
@@ -343,26 +347,84 @@ class RecommendationEngine(private val symphony: Symphony) {
         return ids
     }
 
-    suspend fun getMixSongIds(mix: CustomMix): List<String> {
-        return try {
-            symphony.semanticSearch.searchDetailed(mix.prompt, mix.trackCount)
-                .mapNotNull { it.track.filePath }
-                .mapNotNull { resolvePathToSongId(it) }
-        } catch (e: Exception) {
-            Logger.error("RecommendationEngine", "getMixSongIds failed", e)
-            emptyList()
+    suspend fun getMixSongIds(mix: CustomMix, reroll: Boolean = false): List<String> {
+        val promptList = mix.promptList()
+        if (promptList.isEmpty()) return emptyList()
+
+        if (reroll) {
+            mixSalts[mix.id] = System.currentTimeMillis()
         }
+        val salt = mixSalts[mix.id] ?: 0L
+
+        // seed = میکس + تاریخ امروز + salt ریلود
+        val seed = mix.id * 31L + todayKey().hashCode().toLong() + salt
+        val rng = kotlin.random.Random(seed)
+
+        // چرخش پرامپت: هر روز (و هر reroll) یکی از پرامپتها انتخاب میشه
+        val prompt = promptList[rng.nextInt(promptList.size)]
+
+        // استخر ۳ برابری تا جا برای تنوع باشه
+        val pool = symphony.semanticSearch.searchDetailed(prompt, mix.trackCount * 3)
+        if (pool.isEmpty()) return emptyList()
+
+        // نویز وزندار: آهنگ مرتبطتر شانس بیشتری داره ولی انتخاب قطعی نیست
+        val topScore = pool.first().hybridScore
+        val jitter = 0.25f * topScore
+
+        return pool
+            .map { it to (it.hybridScore + rng.nextFloat() * jitter) }
+            .sortedByDescending { it.second }
+            .mapNotNull { entry ->
+                entry.first.track.filePath?.let { resolvePathToSongId(it) }
+            }
+            .distinct()
+            .take(mix.trackCount)
     }
 
     suspend fun seedDefaultMixesIfNeeded() {
         val store = symphony.database.customMixes
         if (store.count() > 0) return
         listOf(
-            CustomMix(name = "Sad", prompt = "sad melancholic emotional slow", icon = "😢", isBuiltIn = true, sortOrder = 0),
-            CustomMix(name = "Workout", prompt = "energetic powerful workout gym motivation", icon = "⚡", isBuiltIn = true, sortOrder = 1),
-            CustomMix(name = "Chill", prompt = "chill relaxing calm ambient", icon = "🌊", isBuiltIn = true, sortOrder = 2),
-            CustomMix(name = "Night Drive", prompt = "dark synthwave night driving atmospheric", icon = "🌙", isBuiltIn = true, sortOrder = 3),
-            CustomMix(name = "Focus", prompt = "instrumental focus study concentration minimal", icon = "🎯", isBuiltIn = true, sortOrder = 4),
+            CustomMix(
+                name = "Sad", icon = "😢", isBuiltIn = true, sortOrder = 0,
+                prompt = "sad emotional songs",
+                description = "For when you feel down and want to sit with the feeling",
+                prompts = "melancholic slow piano ballad\n" +
+                        "sad acoustic guitar with soft emotional vocals\n" +
+                        "heartbreak songs, quiet and lonely mood",
+            ),
+            CustomMix(
+                name = "Workout", icon = "⚡", isBuiltIn = true, sortOrder = 1,
+                prompt = "energetic workout music",
+                description = "High-energy tracks to keep you moving at the gym",
+                prompts = "energetic rock with heavy drums for gym\n" +
+                        "fast upbeat electronic dance music, high tempo\n" +
+                        "aggressive hip hop with powerful bass",
+            ),
+            CustomMix(
+                name = "Chill", icon = "🌊", isBuiltIn = true, sortOrder = 2,
+                prompt = "chill relaxing music",
+                description = "Laid-back songs for doing nothing in particular",
+                prompts = "chill lofi beats, relaxed and mellow\n" +
+                        "soft indie pop, warm and easygoing\n" +
+                        "smooth ambient music for relaxing",
+            ),
+            CustomMix(
+                name = "Night Drive", icon = "🌙", isBuiltIn = true, sortOrder = 3,
+                prompt = "night drive music",
+                description = "Moody tracks for late-night driving",
+                prompts = "dark synthwave for driving at night\n" +
+                        "moody atmospheric r&b, midnight vibe\n" +
+                        "slow electronic music with deep bass, nocturnal",
+            ),
+            CustomMix(
+                name = "Focus", icon = "🎯", isBuiltIn = true, sortOrder = 4,
+                prompt = "focus instrumental music",
+                description = "Instrumental music that stays out of your way while you work",
+                prompts = "calm instrumental music for concentration\n" +
+                        "minimal piano and strings, no vocals\n" +
+                        "steady downtempo electronic for deep work",
+            ),
         ).forEach { store.insert(it) }
     }
 

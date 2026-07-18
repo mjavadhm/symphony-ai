@@ -163,9 +163,11 @@ fun MixesSection(context: ViewContext) {
         MixSheet(
             context = context,
             title = "${mix.icon} ${mix.name}",
+            subtitle = mix.description.takeIf { it.isNotBlank() },
             source = "mood_mix",
             loadSongIds = { context.symphony.recommendation.getMixSongIds(mix) },
             onDismiss = { openedMix = null },
+            onReload = { context.symphony.recommendation.getMixSongIds(mix, reroll = true) },
         )
     }
     openedDaily?.let { mix ->
@@ -357,7 +359,10 @@ fun MixSheet(
     source: String,
     loadSongIds: suspend () -> List<String>,
     onDismiss: () -> Unit,
+    subtitle: String? = null,
+    onReload: (suspend () -> List<String>)? = null,
 ) {
+    val coroutineScope = rememberCoroutineScope()
     var songs by remember { mutableStateOf<List<io.github.zyrouge.symphony.services.groove.Song>?>(null) }
     var showAddToPlaylist by remember { mutableStateOf(false) }
 
@@ -373,11 +378,30 @@ fun MixSheet(
                     .padding(horizontal = 16.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                Text(
-                    title,
-                    style = MaterialTheme.typography.titleLarge,
-                    modifier = Modifier.weight(1f),
-                )
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(title, style = MaterialTheme.typography.titleLarge)
+                    subtitle?.let {
+                        Text(
+                            it,
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            maxLines = 2,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                    }
+                }
+                onReload?.let { reload ->
+                    IconButton(onClick = {
+                        coroutineScope.launch {
+                            songs = null
+                            songs = reload().mapNotNull {
+                                context.symphony.groove.song.get(it)
+                            }
+                        }
+                    }) {
+                        Icon(Icons.Filled.Refresh, null)
+                    }
+                }
                 songs?.takeIf { it.isNotEmpty() }?.let { list ->
                     TextButton(onClick = { showAddToPlaylist = true }) { Text("Save") }
                     Button(onClick = {
@@ -443,11 +467,20 @@ private fun MixEditorDialog(
 ) {
     val coroutineScope = rememberCoroutineScope()
     var name by remember { mutableStateOf(existing?.name ?: "") }
-    var prompt by remember { mutableStateOf(existing?.prompt ?: "") }
+    var description by remember { mutableStateOf(existing?.description ?: "") }
+    var promptsText by remember {
+        mutableStateOf(
+            existing?.let { mix ->
+                if (mix.prompts.isNotBlank()) mix.prompts else mix.prompt
+            } ?: ""
+        )
+    }
     var icon by remember { mutableStateOf(existing?.icon ?: "🎵") }
     var trackCount by remember { mutableStateOf((existing?.trackCount ?: 25).toFloat()) }
     var preview by remember { mutableStateOf<List<io.github.zyrouge.symphony.services.groove.Song>?>(null) }
     var isPreviewing by remember { mutableStateOf(false) }
+
+    fun promptLines() = promptsText.split("\n").map { it.trim() }.filter { it.isNotBlank() }
 
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -472,21 +505,34 @@ private fun MixEditorDialog(
                 }
                 Spacer(modifier = Modifier.height(8.dp))
                 OutlinedTextField(
-                    value = prompt,
-                    onValueChange = { prompt = it },
-                    label = { Text("Prompt (English works best)") },
+                    value = description,
+                    onValueChange = { description = it },
+                    label = { Text("Description (what is this mix for?)") },
                     modifier = Modifier.fillMaxWidth(),
+                )
+                Spacer(modifier = Modifier.height(8.dp))
+                OutlinedTextField(
+                    value = promptsText,
+                    onValueChange = { promptsText = it },
+                    label = { Text("Prompts — one per line, English works best") },
+                    modifier = Modifier.fillMaxWidth(),
+                    minLines = 3,
                 )
                 Spacer(modifier = Modifier.height(8.dp))
                 Text("Track count: ${trackCount.toInt()}")
                 Slider(value = trackCount, onValueChange = { trackCount = it }, valueRange = 10f..100f)
                 TextButton(
-                    enabled = prompt.isNotBlank() && !isPreviewing,
+                    enabled = promptLines().isNotEmpty() && !isPreviewing,
                     onClick = {
                         coroutineScope.launch {
                             isPreviewing = true
                             preview = context.symphony.recommendation.getMixSongIds(
-                                CustomMix(name = name, prompt = prompt, trackCount = 5)
+                                CustomMix(
+                                    name = name,
+                                    prompt = promptLines().first(),
+                                    prompts = promptsText,
+                                    trackCount = 5,
+                                )
                             ).mapNotNull { context.symphony.groove.song.get(it) }
                             isPreviewing = false
                         }
@@ -504,16 +550,31 @@ private fun MixEditorDialog(
         },
         confirmButton = {
             TextButton(
-                enabled = name.isNotBlank() && prompt.isNotBlank(),
+                enabled = name.isNotBlank() && promptLines().isNotEmpty(),
                 onClick = {
                     coroutineScope.launch {
                         val store = context.symphony.database.customMixes
+                        val firstPrompt = promptLines().first()
                         when (existing) {
                             null -> store.insert(
-                                CustomMix(name = name, prompt = prompt, icon = icon, trackCount = trackCount.toInt())
+                                CustomMix(
+                                    name = name,
+                                    prompt = firstPrompt,
+                                    prompts = promptsText.trim(),
+                                    description = description.trim(),
+                                    icon = icon,
+                                    trackCount = trackCount.toInt(),
+                                )
                             )
                             else -> store.update(
-                                existing.copy(name = name, prompt = prompt, icon = icon, trackCount = trackCount.toInt())
+                                existing.copy(
+                                    name = name,
+                                    prompt = firstPrompt,
+                                    prompts = promptsText.trim(),
+                                    description = description.trim(),
+                                    icon = icon,
+                                    trackCount = trackCount.toInt(),
+                                )
                             )
                         }
                         onDismiss()

@@ -23,7 +23,7 @@ import io.github.zyrouge.symphony.services.database.store.TrackFlowStore
 
 @Database(
     entities = [Playlist::class, PlaybackHistory::class, CustomMix::class, MixContext::class, MixFeedback::class, TrackFlow::class],
-    version = 7,
+    version = 8,
     exportSchema = false
 )
 @TypeConverters(RoomConvertors::class)
@@ -82,13 +82,24 @@ abstract class PersistentDatabase : RoomDatabase() {
             }
         }
 
+        val MIGRATION_MIX_PROMPTS_V1 = object : Migration(7, 8) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL(
+                    "ALTER TABLE custom_mixes ADD COLUMN description TEXT NOT NULL DEFAULT ''"
+                )
+                db.execSQL(
+                    "ALTER TABLE custom_mixes ADD COLUMN prompts TEXT NOT NULL DEFAULT ''"
+                )
+            }
+        }
+
         fun create(symphony: Symphony) = Room
             .databaseBuilder(
                 symphony.applicationContext,
                 PersistentDatabase::class.java,
                 "persistent"
             )
-            .addMigrations(MIGRATION_TELEMETRY_V3, MIGRATION_MIXES_V2, MIGRATION_FLOW_V1)
+            .addMigrations(MIGRATION_TELEMETRY_V3, MIGRATION_MIXES_V2, MIGRATION_FLOW_V1, MIGRATION_MIX_PROMPTS_V1)
             .fallbackToDestructiveMigration()
             .build()
     }
