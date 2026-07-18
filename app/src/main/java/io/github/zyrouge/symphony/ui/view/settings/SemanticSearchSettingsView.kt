@@ -248,6 +248,14 @@ fun SemanticSearchSettingsView(context: ViewContext) {
                             )
                             androidx.compose.material3.ListItem(
                                 modifier = Modifier.clickable {
+                                    context.navController.navigate(io.github.zyrouge.symphony.ui.view.settings.LlmSettingsRoute)
+                                },
+                                leadingContent = { Text("🤖") },
+                                headlineContent = { Text("AI Provider") },
+                                supportingContent = { Text("LLM connection, usage mode and task prompts") },
+                            )
+                            androidx.compose.material3.ListItem(
+                                modifier = Modifier.clickable {
                                     context.navController.navigate(LibraryStatsRoute)
                                 },
                                 leadingContent = { Text("📊") },

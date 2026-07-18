@@ -122,6 +122,9 @@ fun BaseView(symphony: Symphony, activity: MainActivity) {
                 baseComposable<io.github.zyrouge.symphony.ui.view.settings.LibraryStatsRoute> {
                     io.github.zyrouge.symphony.ui.view.settings.LibraryStatsView(context)
                 }
+                baseComposable<io.github.zyrouge.symphony.ui.view.settings.LlmSettingsRoute> {
+                    io.github.zyrouge.symphony.ui.view.settings.LlmSettingsView(context)
+                }
             }
         }
     }

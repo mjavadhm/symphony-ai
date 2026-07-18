@@ -7,13 +7,11 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -22,12 +20,7 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Slider
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
-import androidx.compose.material3.OutlinedTextField
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.rememberCoroutineScope
-import androidx.compose.ui.Alignment
-import io.github.zyrouge.symphony.services.llm.LlmClient
-import kotlinx.coroutines.launch
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -129,7 +122,6 @@ fun RecommendationSettings(context: ViewContext) {
             ) {
                 Text("Reset to defaults")
             }
-            LlmSettingsSection(context)
         }
     }
 }
@@ -172,90 +164,4 @@ private fun SettingSliderItem(
     }
 }
 
-@OptIn(ExperimentalMaterial3Api::class)
-@Composable
-private fun LlmSettingsSection(context: ViewContext) {
-    val llm = context.symphony.llm
-    val coroutineScope = rememberCoroutineScope()
 
-    var baseUrl by remember { mutableStateOf(llm.baseUrl) }
-    var apiKey by remember { mutableStateOf(llm.apiKey) }
-    var model by remember { mutableStateOf(llm.model) }
-    var mode by remember { mutableStateOf(llm.usageMode) }
-    var testResult by remember { mutableStateOf<String?>(null) }
-    var isTesting by remember { mutableStateOf(false) }
-
-    Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-        Text("AI Provider (LLM)", style = MaterialTheme.typography.titleMedium)
-        Text(
-            "Optional. Generates mix prompts and names your daily mixes. " +
-                    "Works with any OpenAI-compatible API " +
-                    "(OpenAI, OpenRouter, Groq, DeepSeek, local Ollama…). " +
-                    "Everything is saved on device and the app stays fully offline when unset.",
-            style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
-        OutlinedTextField(
-            value = baseUrl,
-            onValueChange = { baseUrl = it; llm.baseUrl = it },
-            label = { Text("Base URL") },
-            placeholder = { Text("https://openrouter.ai/api/v1") },
-            modifier = Modifier.fillMaxWidth(),
-            singleLine = true,
-        )
-        OutlinedTextField(
-            value = apiKey,
-            onValueChange = { apiKey = it; llm.apiKey = it },
-            label = { Text("API Key") },
-            modifier = Modifier.fillMaxWidth(),
-            singleLine = true,
-        )
-        OutlinedTextField(
-            value = model,
-            onValueChange = { model = it; llm.model = it },
-            label = { Text("Model") },
-            placeholder = { Text("gpt-4o-mini") },
-            modifier = Modifier.fillMaxWidth(),
-            singleLine = true,
-        )
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            listOf(
-                LlmClient.UsageMode.Off,
-                LlmClient.UsageMode.Manual,
-                LlmClient.UsageMode.Auto,
-            ).forEach { m ->
-                FilterChip(
-                    selected = mode == m,
-                    onClick = { mode = m; llm.usageMode = m },
-                    label = { Text(m.name) },
-                )
-            }
-        }
-        Text(
-            "Off: never used · Manual: only when you press ✨ · " +
-                    "Auto: also names Daily Mixes (sends song titles to the provider)",
-            style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            OutlinedButton(
-                enabled = !isTesting,
-                onClick = {
-                    coroutineScope.launch {
-                        isTesting = true
-                        testResult = null
-                        testResult = when (val r = llm.testConnection()) {
-                            is LlmClient.Result.Success -> "✅ Connected"
-                            is LlmClient.Result.Error -> "❌ ${r.message}"
-                        }
-                        isTesting = false
-                    }
-                },
-            ) { Text(if (isTesting) "Testing…" else "Test connection") }
-            Spacer(modifier = Modifier.width(12.dp))
-            testResult?.let {
-                Text(it, style = MaterialTheme.typography.bodySmall)
-            }
-        }
-    }
-}
