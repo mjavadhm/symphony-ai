@@ -2,6 +2,7 @@ package io.github.zyrouge.symphony.services.recommendation
 
 import android.content.Context
 import io.github.zyrouge.symphony.Symphony
+import io.github.zyrouge.symphony.services.llm.LlmClient
 import io.github.zyrouge.symphony.services.database.entities.CustomMix
 import io.github.zyrouge.symphony.services.database.entities.MixContext
 import io.github.zyrouge.symphony.services.database.entities.MixFeedback
@@ -133,13 +134,40 @@ class RecommendationEngine(private val symphony: Symphony) {
         if (centroids.isEmpty()) return emptyList()
 
         val used = mutableSetOf<String>()
-        return centroids.mapIndexedNotNull { i, c ->
+        val mixes = centroids.mapIndexedNotNull { i, c ->
             val ids = generateMixFromVector(c, dailyMixSize, playedIds, exclude + used)
             used += ids
             when {
                 ids.isEmpty() -> null
                 centroids.size == 1 -> DailyMix("Daily Mix", ids)
                 else -> DailyMix("Daily Mix ${i + 1}", ids)
+            }
+        }
+        return maybeNameDailyMixes(mixes)
+    }
+
+    /**
+     * فقط توی حالت Auto: با LLM برای هر Daily Mix یه اسم واقعی میسازه.
+     * هر خطایی => همون اسم پیشفرض. هیچوقت مسیر اصلی رو نمیشکنه.
+     */
+    private suspend fun maybeNameDailyMixes(mixes: List<DailyMix>): List<DailyMix> {
+        val llm = symphony.llm
+        if (llm.usageMode != LlmClient.UsageMode.Auto || !llm.isConfigured) return mixes
+        return mixes.map { mix ->
+            val songs = mix.songIds.take(8).mapNotNull { symphony.groove.song.get(it) }
+            if (songs.isEmpty()) return@map mix
+            val name = try {
+                symphony.llmTasks.nameMix(
+                    titles = songs.map { it.title },
+                    artists = songs.flatMap { it.artists }.distinct().take(8),
+                )
+            } catch (e: Exception) {
+                null
+            }
+            when (name) {
+                null -> mix
+                // این دو کاراکتر جداکنندهی فرمت کش هستن؛ نباید توی اسم باشن
+                else -> mix.copy(name = name.replace("|", " ").replace(";", " ").trim())
             }
         }
     }
