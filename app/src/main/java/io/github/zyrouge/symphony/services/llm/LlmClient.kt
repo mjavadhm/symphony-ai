@@ -26,6 +26,33 @@ class LlmClient(private val symphony: Symphony) {
         get() = symphony.applicationContext
             .getSharedPreferences("llm_prefs", Context.MODE_PRIVATE)
 
+    companion object {
+        val DEFAULT_MIX_PROMPTS_SYSTEM = """
+            You write search prompts for CLAP, a model that matches text to music audio.
+            Rules:
+            - Prompts must be in English.
+            - Each prompt describes sound only: genre, mood, tempo, instruments, vocals.
+            - Keep each prompt under 12 words.
+            - Make the prompts meaningfully different from each other.
+            - You MUST return exactly the requested number of prompts.
+            - Reply with ONLY a JSON array of strings. No explanations, no markdown.
+        """.trimIndent()
+
+        val DEFAULT_NAME_MIX_SYSTEM =
+            "You name music playlists. Reply with ONLY the playlist name: " +
+                    "2 to 4 words, in English, no quotes, no emoji, no explanations."
+    }
+
+    var mixPromptsSystem: String
+        get() = prefs.getString("tpl_mix_prompts", null)
+            ?.takeIf { it.isNotBlank() } ?: DEFAULT_MIX_PROMPTS_SYSTEM
+        set(v) = prefs.edit().putString("tpl_mix_prompts", v).apply()
+
+    var nameMixSystem: String
+        get() = prefs.getString("tpl_name_mix", null)
+            ?.takeIf { it.isNotBlank() } ?: DEFAULT_NAME_MIX_SYSTEM
+        set(v) = prefs.edit().putString("tpl_name_mix", v).apply()
+
     var baseUrl: String
         get() = prefs.getString("base_url", "") ?: ""
         set(v) = prefs.edit().putString("base_url", v.trim().trimEnd('/')).apply()

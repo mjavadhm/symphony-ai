@@ -15,24 +15,24 @@ class LlmTasks(private val symphony: Symphony) {
      * null یعنی خطا (نت، key، جواب خراب مدل).
      */
     suspend fun generateMixPrompts(description: String, count: Int = 4): List<String>? {
-        val result = client.complete(
-            system = """
-                You write search prompts for CLAP, a model that matches text to music audio.
-                Rules:
-                - Prompts must be in English.
-                - Each prompt describes sound only: genre, mood, tempo, instruments, vocals.
-                - Keep each prompt under 12 words.
-                - Make the prompts meaningfully different from each other.
-                - Reply with ONLY a JSON array of strings. No explanations, no markdown.
-            """.trimIndent(),
-            user = "Mix description: $description\nGenerate $count prompts.",
-        )
-        return when (result) {
-            is LlmClient.Result.Error -> null
-            is LlmClient.Result.Success -> parseStringArray(result.content)
-                ?.take(count)
-                ?.takeIf { it.isNotEmpty() }
+        suspend fun attempt(): List<String>? {
+            val result = client.complete(
+                system = client.mixPromptsSystem,
+                user = "Mix description: $description\n" +
+                        "Generate exactly $count prompts. " +
+                        "Return a JSON array with exactly $count strings.",
+            )
+            return when (result) {
+                is LlmClient.Result.Error -> null
+                is LlmClient.Result.Success -> parseStringArray(result.content)
+                    ?.take(count)
+                    ?.takeIf { it.isNotEmpty() }
+            }
         }
+        // اگه مدل کمتر از نصف تعداد خواستهشده داد، یه بار دیگه امتحان کن
+        val first = attempt() ?: return null
+        if (first.size * 2 >= count) return first
+        return attempt()?.takeIf { it.size > first.size } ?: first
     }
 
     /**
@@ -40,8 +40,7 @@ class LlmTasks(private val symphony: Symphony) {
      */
     suspend fun nameMix(titles: List<String>, artists: List<String>): String? {
         val result = client.complete(
-            system = "You name music playlists. Reply with ONLY the playlist name: " +
-                    "2 to 4 words, in English, no quotes, no emoji, no explanations.",
+            system = client.nameMixSystem,
             user = "Songs: ${titles.joinToString("; ")}\n" +
                     "Artists: ${artists.joinToString("; ")}",
             temperature = 0.8f,
