@@ -26,6 +26,7 @@ import androidx.compose.ui.unit.dp
 import coil.compose.AsyncImage
 import io.github.zyrouge.symphony.services.database.entities.CustomMix
 import io.github.zyrouge.symphony.services.database.entities.MixContext
+import io.github.zyrouge.symphony.services.llm.LlmClient
 import io.github.zyrouge.symphony.services.recommendation.RecommendationEngine
 import io.github.zyrouge.symphony.ui.components.AddToPlaylistDialog
 import io.github.zyrouge.symphony.ui.components.SongCard
@@ -479,6 +480,8 @@ private fun MixEditorDialog(
     var trackCount by remember { mutableStateOf((existing?.trackCount ?: 25).toFloat()) }
     var preview by remember { mutableStateOf<List<io.github.zyrouge.symphony.services.groove.Song>?>(null) }
     var isPreviewing by remember { mutableStateOf(false) }
+    var isGeneratingPrompts by remember { mutableStateOf(false) }
+    var llmError by remember { mutableStateOf<String?>(null) }
 
     fun promptLines() = promptsText.split("\n").map { it.trim() }.filter { it.isNotBlank() }
 
@@ -518,6 +521,34 @@ private fun MixEditorDialog(
                     modifier = Modifier.fillMaxWidth(),
                     minLines = 3,
                 )
+                val llm = context.symphony.llm
+                if (llm.isConfigured && llm.usageMode != LlmClient.UsageMode.Off) {
+                    TextButton(
+                        enabled = description.isNotBlank() && !isGeneratingPrompts,
+                        onClick = {
+                            coroutineScope.launch {
+                                isGeneratingPrompts = true
+                                llmError = null
+                                val generated = context.symphony.llmTasks
+                                    .generateMixPrompts(description)
+                                when (generated) {
+                                    null -> llmError = "Couldn't generate prompts. Check AI settings."
+                                    else -> promptsText = generated.joinToString("\n")
+                                }
+                                isGeneratingPrompts = false
+                            }
+                        },
+                    ) {
+                        Text(if (isGeneratingPrompts) "Generating…" else "✨ Generate prompts with AI")
+                    }
+                    llmError?.let {
+                        Text(
+                            it,
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.error,
+                        )
+                    }
+                }
                 Spacer(modifier = Modifier.height(8.dp))
                 Text("Track count: ${trackCount.toInt()}")
                 Slider(value = trackCount, onValueChange = { trackCount = it }, valueRange = 10f..100f)
