@@ -472,7 +472,7 @@ class RecommendationEngine(private val symphony: Symphony) {
         return map
     }
 
-    private fun resolvePathToSongId(path: String): String? {
+    fun resolvePathToSongId(path: String): String? {
         val index = pathIndex()
         val p = path.lowercase()
         return index[p] ?: index[p.substringAfterLast('/')]

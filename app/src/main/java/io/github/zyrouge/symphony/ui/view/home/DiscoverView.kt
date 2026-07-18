@@ -23,6 +23,8 @@ import io.github.zyrouge.symphony.ui.helpers.ViewContext
 import kotlinx.coroutines.launch
 import io.github.zyrouge.symphony.services.groove.Song
 import dev.chrisbanes.haze.hazeSource
+import androidx.compose.foundation.clickable
+import androidx.compose.material3.ElevatedCard
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -62,6 +64,40 @@ fun DiscoverView(context: ViewContext) {
             .padding(horizontal = 16.dp),
         contentPadding = LocalHomeContentPadding.current,
     ) {
+            item {
+                if (context.symphony.llm.isConfigured &&
+                    context.symphony.llm.usageMode != io.github.zyrouge.symphony.services.llm.LlmClient.UsageMode.Off
+                ) {
+                    ElevatedCard(
+                        modifier = Modifier
+                            .fillMaxWidth(),
+                    ) {
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable {
+                                    context.navController.navigate(
+                                        io.github.zyrouge.symphony.ui.view.DiscoverChatRoute
+                                    )
+                                }
+                                .padding(16.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            Text("💬", style = MaterialTheme.typography.headlineSmall)
+                            Spacer(modifier = Modifier.width(12.dp))
+                            Column {
+                                Text("Chat with AI", style = MaterialTheme.typography.titleMedium)
+                                Text(
+                                    "Describe what you want, give feedback, refine",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                )
+                            }
+                        }
+                    }
+                    Spacer(modifier = Modifier.height(12.dp))
+                }
+            }
             item {
                 IndexingStatusBanner(context)
             }
