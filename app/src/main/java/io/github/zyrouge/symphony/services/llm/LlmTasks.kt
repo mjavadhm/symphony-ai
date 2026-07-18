@@ -2,6 +2,15 @@ package io.github.zyrouge.symphony.services.llm
 
 import io.github.zyrouge.symphony.Symphony
 import org.json.JSONArray
+import org.json.JSONObject
+
+data class ChatTurn(val role: String, val content: String)
+
+sealed class DiscoverChatAction {
+    data class Ask(val reply: String) : DiscoverChatAction()
+    data class Search(val reply: String, val prompts: List<String>) : DiscoverChatAction()
+    data class Failed(val message: String) : DiscoverChatAction()
+}
 
 /**
  * تسکهای معنادار روی LlmClient.
@@ -51,6 +60,46 @@ class LlmTasks(private val symphony: Symphony) {
                 .trim()
                 .trim('"', '\'', '.')
                 .takeIf { it.isNotBlank() && it.length <= 40 }
+        }
+    }
+
+    suspend fun discoverChat(history: List<ChatTurn>): DiscoverChatAction {
+        val result = client.completeMessages(
+            system = client.discoverChatSystem,
+            messages = history.map { it.role to it.content },
+            temperature = 0.7f,
+        )
+        return when (result) {
+            is LlmClient.Result.Error -> DiscoverChatAction.Failed(result.message)
+            is LlmClient.Result.Success -> parseChatAction(result.content)
+        }
+    }
+
+    /**
+     * پارسر سهلگیر: اگه JSON خراب بود، کل متن رو یه پیام معمولی فرض میکنیم
+     * تا چت هیچوقت نشکنه.
+     */
+    private fun parseChatAction(text: String): DiscoverChatAction {
+        val start = text.indexOf('{')
+        val end = text.lastIndexOf('}')
+        if (start < 0 || end <= start) {
+            return DiscoverChatAction.Ask(text.trim().take(500))
+        }
+        return try {
+            val obj = JSONObject(text.substring(start, end + 1))
+            val reply = obj.optString("reply").ifBlank { "…" }
+            when (obj.optString("action")) {
+                "search" -> {
+                    val arr = obj.optJSONArray("prompts")
+                    val prompts = (0 until (arr?.length() ?: 0))
+                        .mapNotNull { i -> arr?.optString(i)?.takeIf { it.isNotBlank() } }
+                    if (prompts.isEmpty()) DiscoverChatAction.Ask(reply)
+                    else DiscoverChatAction.Search(reply, prompts)
+                }
+                else -> DiscoverChatAction.Ask(reply)
+            }
+        } catch (e: Exception) {
+            DiscoverChatAction.Ask(text.trim().take(500))
         }
     }
 

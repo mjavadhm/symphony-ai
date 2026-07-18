@@ -41,7 +41,24 @@ class LlmClient(private val symphony: Symphony) {
         val DEFAULT_NAME_MIX_SYSTEM =
             "You name music playlists. Reply with ONLY the playlist name: " +
                     "2 to 4 words, in English, no quotes, no emoji, no explanations."
+
+        val DEFAULT_DISCOVER_CHAT_SYSTEM = """
+            You help the user build a playlist from their local music library by chatting with them.
+            You cannot see or pick songs directly. Songs are found by CLAP, a model that matches English text prompts to music audio.
+            Every turn, reply with ONLY a JSON object, no markdown:
+            - Need more info? {"action":"ask","reply":"<one short question>"}
+            - Ready to search? {"action":"search","reply":"<one short sentence>","prompts":["...","..."]}
+            Prompt rules: 2-4 prompts, English only, describe sound (genre, mood, tempo, instruments, vocals), under 12 words each, meaningfully different.
+            When the user gives feedback on results, refine the prompts.
+            Write "reply" in the same language the user writes in.
+            Prefer searching early and refining, instead of asking many questions.
+        """.trimIndent()
     }
+
+    var discoverChatSystem: String
+        get() = prefs.getString("tpl_discover_chat", null)
+            ?.takeIf { it.isNotBlank() } ?: DEFAULT_DISCOVER_CHAT_SYSTEM
+        set(v) = prefs.edit().putString("tpl_discover_chat", v).apply()
 
     var mixPromptsSystem: String
         get() = prefs.getString("tpl_mix_prompts", null)
@@ -80,20 +97,26 @@ class LlmClient(private val symphony: Symphony) {
         system: String,
         user: String,
         temperature: Float = 0.9f,
+    ): Result = completeMessages(system, listOf("user" to user), temperature)
+
+    suspend fun completeMessages(
+        system: String,
+        messages: List<Pair<String, String>>, // role به content
+        temperature: Float = 0.9f,
     ): Result = withContext(Dispatchers.IO) {
         if (!isConfigured) {
             return@withContext Result.Error("LLM is not configured")
         }
         try {
+            val messagesJson = JSONArray()
+                .put(JSONObject().put("role", "system").put("content", system))
+            for ((role, content) in messages) {
+                messagesJson.put(JSONObject().put("role", role).put("content", content))
+            }
             val body = JSONObject()
                 .put("model", model)
                 .put("temperature", temperature.toDouble())
-                .put(
-                    "messages",
-                    JSONArray()
-                        .put(JSONObject().put("role", "system").put("content", system))
-                        .put(JSONObject().put("role", "user").put("content", user)),
-                )
+                .put("messages", messagesJson)
 
             val conn = URL("$baseUrl/chat/completions")
                 .openConnection() as HttpURLConnection

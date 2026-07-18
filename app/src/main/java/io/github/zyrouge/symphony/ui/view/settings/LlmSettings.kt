@@ -55,6 +55,7 @@ fun LlmSettingsView(context: ViewContext) {
     var isTesting by remember { mutableStateOf(false) }
     var mixPromptsTpl by remember { mutableStateOf(llm.mixPromptsSystem) }
     var nameMixTpl by remember { mutableStateOf(llm.nameMixSystem) }
+    var discoverTpl by remember { mutableStateOf(llm.discoverChatSystem) }
 
     Scaffold(
         topBar = {
@@ -176,6 +177,17 @@ fun LlmSettingsView(context: ViewContext) {
             TextButton(onClick = {
                 llm.nameMixSystem = ""
                 nameMixTpl = llm.nameMixSystem
+            }) { Text("Reset to default") }
+            OutlinedTextField(
+                value = discoverTpl,
+                onValueChange = { discoverTpl = it; llm.discoverChatSystem = it },
+                label = { Text("Discover chat") },
+                modifier = Modifier.fillMaxWidth(),
+                minLines = 5,
+            )
+            TextButton(onClick = {
+                llm.discoverChatSystem = ""
+                discoverTpl = llm.discoverChatSystem
             }) { Text("Reset to default") }
         }
     }
