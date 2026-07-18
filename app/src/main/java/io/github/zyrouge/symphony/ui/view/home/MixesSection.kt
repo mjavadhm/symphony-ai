@@ -2,11 +2,14 @@ package io.github.zyrouge.symphony.ui.view.home
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import io.github.zyrouge.symphony.ui.components.GlassSurface
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.PlayArrow
@@ -103,12 +106,15 @@ fun MixesSection(context: ViewContext) {
         // ---- Context Mix (فقط وقتی ساعت فعلی توی یکی از بازههاست) ----
         activeCtx?.let { ctx ->
             Box(modifier = Modifier.padding(20.dp, 0.dp)) {
-                ElevatedCard(
+                GlassSurface(
                     modifier = Modifier.fillMaxWidth(),
-                    onClick = { openedContext = ctx },
+                    shape = RoundedCornerShape(24.dp),
                 ) {
                     Row(
-                        modifier = Modifier.padding(16.dp),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable { openedContext = ctx }
+                            .padding(16.dp),
                         verticalAlignment = Alignment.CenterVertically,
                     ) {
                         Text(ctx.icon, style = MaterialTheme.typography.headlineSmall)
@@ -116,7 +122,7 @@ fun MixesSection(context: ViewContext) {
                         Column(modifier = Modifier.weight(1f)) {
                             Text("${ctx.name} Mix", style = MaterialTheme.typography.titleMedium)
                             Text(
-                                "چیزی که این ساعتها معمولاً گوش میدی",
+                                "What you usually listen to around this time",
                                 style = MaterialTheme.typography.bodySmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                             )
@@ -204,11 +210,15 @@ private fun DailyMixCard(
     onOpen: () -> Unit,
     onRefresh: () -> Unit,
 ) {
-    ElevatedCard(
+    GlassSurface(
         modifier = modifier.height(132.dp),
-        onClick = onOpen,
+        shape = RoundedCornerShape(24.dp),
     ) {
-        Row {
+        Row(
+            modifier = Modifier
+                .fillMaxSize()
+                .clickable(onClick = onOpen),
+        ) {
             MixCoverCollage(
                 context = context,
                 songIds = mix.songIds,
@@ -232,7 +242,7 @@ private fun DailyMixCard(
                     )
                     Spacer(modifier = Modifier.height(2.dp))
                     Text(
-                        "بر اساس شنیدههای اخیرت · ${mix.songIds.size} آهنگ",
+                        "Based on your recent listening · ${mix.songIds.size} songs",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         maxLines = 2,
@@ -272,6 +282,7 @@ private fun MoodMixCard(
     }
     ElevatedCard(
         modifier = Modifier.size(width = 120.dp, height = 120.dp),
+        shape = RoundedCornerShape(24.dp),
         onClick = onClick,
     ) {
         Box(modifier = Modifier.fillMaxSize()) {
@@ -320,12 +331,14 @@ private fun MoodMixCard(
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun NewMixCard(onClick: () -> Unit) {
-    OutlinedCard(
+    GlassSurface(
         modifier = Modifier.size(width = 120.dp, height = 120.dp),
-        onClick = onClick,
+        shape = RoundedCornerShape(24.dp),
     ) {
         Column(
-            modifier = Modifier.fillMaxSize(),
+            modifier = Modifier
+                .fillMaxSize()
+                .clickable(onClick = onClick),
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.Center,
         ) {
@@ -390,7 +403,7 @@ fun MixSheet(
                         contentAlignment = Alignment.Center,
                     ) {
                         Text(
-                            "هنوز دادهی کافی برای این میکس نیست",
+                            "Not enough data for this mix yet",
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
                     }
