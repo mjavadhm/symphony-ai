@@ -1,14 +1,33 @@
 package io.github.zyrouge.symphony.ui.view.settings
 
-import androidx.compose.foundation.layout.*
-import androidx.compose.material3.*
-import androidx.compose.runtime.*
-import androidx.compose.ui.Modifier
-import androidx.compose.ui.unit.dp
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Slider
+import androidx.compose.material3.Text
+import androidx.compose.material3.TopAppBar
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.unit.dp
 import io.github.zyrouge.symphony.ui.helpers.ViewContext
-import kotlinx.coroutines.launch
 import kotlinx.serialization.Serializable
 
 @Serializable
@@ -17,18 +36,17 @@ object RecommendationSettingsRoute
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun RecommendationSettings(context: ViewContext) {
-    val coroutineScope = rememberCoroutineScope()
     val engine = context.symphony.recommendation
-    
+
     var discoveryRatio by remember { mutableStateOf(engine.discoveryRatio) }
-    var recencyHalfLife by remember { mutableStateOf(engine.recencyHalfLifeDays.toFloat()) }
-    var dailyMixSize by remember { mutableStateOf(engine.dailyMixSize.toFloat()) }
-    var dailyMixCount by remember { mutableStateOf(engine.dailyMixCount.toFloat()) }
+    var halfLife by remember { mutableStateOf(engine.recencyHalfLifeDays.toFloat()) }
+    var mixSize by remember { mutableStateOf(engine.dailyMixSize.toFloat()) }
+    var mixCount by remember { mutableStateOf(engine.dailyMixCount.toFloat()) }
 
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("تنظیمات هوش مصنوعی") },
+                title = { Text("AI Settings") },
                 navigationIcon = {
                     IconButton(onClick = { context.navController.popBackStack() }) {
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, null)
@@ -36,78 +54,112 @@ fun RecommendationSettings(context: ViewContext) {
                 },
             )
         },
-    ) { paddingValues ->
+    ) { contentPadding ->
         Column(
             modifier = Modifier
-                .padding(paddingValues)
-                .padding(16.dp)
+                .padding(contentPadding)
+                .verticalScroll(rememberScrollState())
+                .padding(20.dp),
+            verticalArrangement = Arrangement.spacedBy(24.dp),
         ) {
-            Text("نسبت آهنگ‌های جدید به قدیمی", style = MaterialTheme.typography.titleMedium)
-            Slider(
+            SettingSliderItem(
+                title = "Discovery ratio",
+                description = "How much new, unheard music gets mixed into your mixes. Higher means more discovery.",
+                valueLabel = "${(discoveryRatio * 100).toInt()}%",
                 value = discoveryRatio,
-                onValueChange = { 
+                valueRange = 0f..1f,
+                steps = 9,
+                onChange = {
                     discoveryRatio = it
                     engine.discoveryRatio = it
                 },
-                valueRange = 0f..1f,
-                steps = 9
             )
-            Text("تنوع میکس: ${(discoveryRatio * 100).toInt()}% آهنگ‌های جدید", style = MaterialTheme.typography.bodySmall)
-            Spacer(modifier = Modifier.height(24.dp))
-
-            Text("حافظهٔ سلیقه (نیمه‌عمر)", style = MaterialTheme.typography.titleMedium)
-            Slider(
-                value = recencyHalfLife,
-                onValueChange = { 
-                    recencyHalfLife = it
+            SettingSliderItem(
+                title = "Taste memory (half-life)",
+                description = "How fast older listens lose their influence on your taste profile.",
+                valueLabel = "${halfLife.toInt()} days",
+                value = halfLife,
+                valueRange = 1f..30f,
+                steps = 28,
+                onChange = {
+                    halfLife = it
                     engine.recencyHalfLifeDays = it.toInt()
                 },
-                valueRange = 1f..30f,
-                steps = 29
             )
-            Text("تأثیر آهنگ‌ها بعد از ${recencyHalfLife.toInt()} روز نصف میشه", style = MaterialTheme.typography.bodySmall)
-            Spacer(modifier = Modifier.height(24.dp))
-
-            Text("تعداد آهنگ در هر میکس", style = MaterialTheme.typography.titleMedium)
-            Slider(
-                value = dailyMixSize,
-                onValueChange = { 
-                    dailyMixSize = it
+            SettingSliderItem(
+                title = "Songs per mix",
+                description = "How many songs each mix contains.",
+                valueLabel = "${mixSize.toInt()}",
+                value = mixSize,
+                valueRange = 10f..100f,
+                steps = 8,
+                onChange = {
+                    mixSize = it
                     engine.dailyMixSize = it.toInt()
                 },
-                valueRange = 10f..100f,
-                steps = 90
             )
-            Text("${dailyMixSize.toInt()} آهنگ", style = MaterialTheme.typography.bodySmall)
-            Spacer(modifier = Modifier.height(24.dp))
-
-            Text("تعداد خوشه‌های Daily Mix", style = MaterialTheme.typography.titleMedium)
-            Slider(
-                value = dailyMixCount,
-                onValueChange = { 
-                    dailyMixCount = it
+            SettingSliderItem(
+                title = "Daily Mix count",
+                description = "How many Daily Mixes to generate. Needs enough listening history.",
+                valueLabel = "${mixCount.toInt()}",
+                value = mixCount,
+                valueRange = 1f..3f,
+                steps = 1,
+                onChange = {
+                    mixCount = it
                     engine.dailyMixCount = it.toInt()
                 },
-                valueRange = 1f..3f,
-                steps = 2
             )
-            Text("${dailyMixCount.toInt()} میکس روزانه", style = MaterialTheme.typography.bodySmall)
-            Spacer(modifier = Modifier.height(32.dp))
-
-            Button(
+            OutlinedButton(
+                modifier = Modifier.fillMaxWidth(),
                 onClick = {
-                    coroutineScope.launch {
-                        engine.resetToDefaults()
-                        discoveryRatio = engine.discoveryRatio
-                        recencyHalfLife = engine.recencyHalfLifeDays.toFloat()
-                        dailyMixSize = engine.dailyMixSize.toFloat()
-                        dailyMixCount = engine.dailyMixCount.toFloat()
-                    }
+                    engine.resetToDefaults()
+                    discoveryRatio = engine.discoveryRatio
+                    halfLife = engine.recencyHalfLifeDays.toFloat()
+                    mixSize = engine.dailyMixSize.toFloat()
+                    mixCount = engine.dailyMixCount.toFloat()
                 },
-                modifier = Modifier.fillMaxWidth()
             ) {
-                Text("بازنشانی به تنظیمات پیش‌فرض")
+                Text("Reset to defaults")
             }
         }
+    }
+}
+
+@Composable
+private fun SettingSliderItem(
+    title: String,
+    description: String,
+    valueLabel: String,
+    value: Float,
+    valueRange: ClosedFloatingPointRange<Float>,
+    steps: Int,
+    onChange: (Float) -> Unit,
+) {
+    Column {
+        Row(modifier = Modifier.fillMaxWidth()) {
+            Text(
+                title,
+                style = MaterialTheme.typography.titleSmall,
+                modifier = Modifier.weight(1f),
+            )
+            Text(
+                valueLabel,
+                style = MaterialTheme.typography.titleSmall,
+                color = MaterialTheme.colorScheme.primary,
+            )
+        }
+        Text(
+            description,
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        Spacer(modifier = Modifier.height(4.dp))
+        Slider(
+            value = value,
+            onValueChange = onChange,
+            valueRange = valueRange,
+            steps = steps,
+        )
     }
 }
