@@ -117,10 +117,9 @@ fun RecommendationSettings(context: ViewContext) {
             ) {
                 Text("Reset to defaults")
             }
-            }
-        }
                 }
             }
+        }
     }
 }
 
