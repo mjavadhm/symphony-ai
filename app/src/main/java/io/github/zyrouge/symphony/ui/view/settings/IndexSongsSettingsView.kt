@@ -20,10 +20,12 @@ import io.github.zyrouge.symphony.services.search.IndexingState
 import io.github.zyrouge.symphony.ui.components.*
 import io.github.zyrouge.symphony.ui.helpers.ViewContext
 import kotlinx.serialization.Serializable
-import android.os.Build
 import android.Manifest
+import android.os.Build
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.shape.RoundedCornerShape
+import dev.chrisbanes.haze.hazeSource
 
 @Serializable
 object IndexSongsSettingsRoute
@@ -112,7 +114,9 @@ fun IndexSongsSettingsView(context: ViewContext) {
         }
     ) { contentPadding ->
         LazyColumn(
-            modifier = Modifier.padding(contentPadding),
+            modifier = Modifier
+                .hazeSource(state = LocalHazeState.current, zIndex = 1f)
+                .padding(contentPadding),
             contentPadding = PaddingValues(bottom = 96.dp)
         ) {
             // کارت پیشرفت غیرمسدودکننده
@@ -128,13 +132,11 @@ fun IndexSongsSettingsView(context: ViewContext) {
             // خلاصه آخرین اجرا (وقتی تموم شده و خطا داشته)
             if (!indexingState.isActive && indexingState.total > 0 && indexingState.failedCount > 0) {
                 item {
-                    Card(
+                    GlassSurface(
                         modifier = Modifier
                             .fillMaxWidth()
                             .padding(horizontal = 16.dp, vertical = 8.dp),
-                        colors = CardDefaults.cardColors(
-                            containerColor = MaterialTheme.colorScheme.errorContainer
-                        )
+                        shape = RoundedCornerShape(28.dp),
                     ) {
                         Column(modifier = Modifier.padding(16.dp)) {
                             Row(
@@ -146,11 +148,11 @@ fun IndexSongsSettingsView(context: ViewContext) {
                                     "Last run: ${indexingState.current - indexingState.failedCount} indexed, " +
                                         "${indexingState.failedCount} failed",
                                     style = MaterialTheme.typography.titleSmall,
-                                    color = MaterialTheme.colorScheme.onErrorContainer,
+                                    color = MaterialTheme.colorScheme.error,
                                     modifier = Modifier.weight(1f)
                                 )
                                 IconButton(onClick = { context.symphony.semanticSearch.clearIndexingResult() }) {
-                                    Icon(Icons.Filled.Close, contentDescription = "Clear", tint = MaterialTheme.colorScheme.onErrorContainer)
+                                    Icon(Icons.Filled.Close, contentDescription = "Clear", tint = MaterialTheme.colorScheme.error)
                                 }
                             }
                             Spacer(Modifier.height(8.dp))
@@ -160,7 +162,7 @@ fun IndexSongsSettingsView(context: ViewContext) {
                                         .mapNotNull { context.symphony.groove.song.get(it) }
                                     context.symphony.semanticSearch.startIndexing(failedSongs)
                                 },
-                                colors = ButtonDefaults.textButtonColors(contentColor = MaterialTheme.colorScheme.onErrorContainer)
+                                colors = ButtonDefaults.textButtonColors(contentColor = MaterialTheme.colorScheme.error)
                             ) {
                                 Text("Retry failed songs")
                             }
@@ -170,7 +172,13 @@ fun IndexSongsSettingsView(context: ViewContext) {
             }
 
             item {
-                Column(modifier = Modifier.padding(horizontal = 20.dp)) {
+                GlassSurface(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp, vertical = 8.dp),
+                    shape = RoundedCornerShape(28.dp),
+                ) {
+                Column(modifier = Modifier.padding(16.dp)) {
                     Text(
                         "$indexedCount indexed • ${unembeddedSongs.size} remaining",
                         style = MaterialTheme.typography.bodySmall,
@@ -184,6 +192,7 @@ fun IndexSongsSettingsView(context: ViewContext) {
                         placeholder = { Text("Filter songs…") },
                         singleLine = true,
                     )
+                }
                 }
             }
 
@@ -263,10 +272,11 @@ private fun IndexingProgressCard(
     state: IndexingState,
     onCancel: () -> Unit,
 ) {
-    Card(
+    GlassSurface(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(horizontal = 16.dp, vertical = 8.dp)
+            .padding(horizontal = 16.dp, vertical = 8.dp),
+        shape = RoundedCornerShape(28.dp),
     ) {
         Column(modifier = Modifier.padding(16.dp)) {
             Row(

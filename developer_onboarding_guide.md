@@ -401,7 +401,8 @@ Settings are stored in `SharedPreferences` and exposed as reactive `StateFlow`. 
    ```kotlin
    @Composable
    fun MyView(context: ViewContext, route: MyViewRoute) {
-       // Use Scaffold, MaterialTheme, existing components
+       // Use the GLASS design system: GlassSettingsScaffold (settings screens)
+       // or GlassDetailScaffold (detail screens). NEVER a plain Scaffold + TopAppBar.
    }
    ```
 
@@ -441,7 +442,11 @@ Settings are stored in `SharedPreferences` and exposed as reactive `StateFlow`. 
 1. Create a file in `ui/view/settings/` following the existing pattern
 2. Define a `@Serializable object` route
 3. Register in `Base.kt`
-4. Use the pre-built settings tile components from `ui/components/settings/`:
+4. **Always wrap the screen in `GlassSettingsScaffold`** (`ui/components/GlassSettingsScaffold.kt`).
+   Never use a plain `Scaffold` + `TopAppBar` — the app uses a glass (Haze blur) design system
+   with a dynamic artwork background.
+5. Put body content inside `GlassSurface` containers (`ui/components/Glass.kt`).
+6. Use the pre-built settings tile components from `ui/components/settings/`:
    - `SwitchTile` — boolean toggle
    - `OptionTile` — single select
    - `MultiOptionTile` — multi select
@@ -465,6 +470,9 @@ Before submitting any UI change, verify:
 - [ ] Components reuse existing building blocks (`SongCard`, `GenericGrooveCard`, `SquareGrooveTile`, etc.)
 - [ ] New repositories follow the `onSong()` + `StateFlow` pattern
 - [ ] Cards use `Color.Transparent` container background
+- [ ] Screens use the glass design system: `GlassSettingsScaffold` (settings) or `GlassDetailScaffold` (detail) — never a plain `Scaffold` + `TopAppBar`
+- [ ] Body sections are wrapped in `GlassSurface`; scaffold `containerColor` stays `Color.Transparent`
+- [ ] Custom layouts that need blur-behind register content with `Modifier.hazeSource(LocalHazeState.current)` (library: `dev.chrisbanes.haze`)
 
 ---
 

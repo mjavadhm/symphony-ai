@@ -254,17 +254,25 @@ app/src/main/java/io/github/zyrouge/symphony/
 | Folders.kt | Folder grid |
 | Tree.kt | Hierarchical file tree |
 
-#### `ui/view/settings/` — Settings Sub-pages (7 pages)
+#### `ui/view/settings/` — Settings Sub-pages (13 pages)
+
+All settings pages use GlassSettingsScaffold.
 
 | File | Settings Area |
 |------|--------------|
 | AppearanceSettingsView.kt | Theme, colors, Material You, font, scale |
+| BackupSettingsView.kt | Backup & restore |
+| DuplicateSongsSettingsView.kt | Find duplicate songs |
 | GrooveSettingsView.kt | Media folders, filters, cache, metadata engine |
 | HomePageSettingsView.kt | Tab visibility, order, bottom bar labels |
+| IndexSongsSettingsView.kt | AI index management |
+| LibraryStatsSettings.kt | Library statistics |
+| LlmSettings.kt | AI provider (LLM) configuration |
 | MiniPlayerSettingsView.kt | Mini player controls, marquee |
 | NowPlayingSettingsView.kt | Controls layout, additional info, lyrics layout |
 | PlayerSettingsView.kt | Audio focus, headphone behavior, fade, gapless |
-| UpdateSettingsView.kt | Auto-update check toggle |
+| RecommendationSettings.kt | AI recommendations (discovery ratio, daily mixes) |
+| SemanticSearchSettingsView.kt | AI semantic search |
 
 #### `ui/view/nowPlaying/` — Now Playing Sub-components
 
@@ -283,6 +291,16 @@ app/src/main/java/io/github/zyrouge/symphony/
 ---
 
 ### `ui/components/` — Reusable Components (48 files)
+
+#### Glass (Haze) Design System — REQUIRED for all new screens
+
+| Component | Purpose |
+|-----------|---------|
+| Glass.kt (`GlassSurface`) | Base glass surface with Haze blur — wrap top bars, cards, body sections |
+| GlassChip.kt | Glass-styled chip |
+| GlassSettingsScaffold.kt | Standard scaffold for ALL settings pages (glass top bar + `HomeDynamicBackground`) |
+| GlassDetailScaffold.kt | Standard scaffold for detail screens |
+| DynamicBackground.kt (`HomeDynamicBackground`) | Animated artwork-based background rendered behind glass surfaces |
 
 #### Data Display Components
 
@@ -406,7 +424,9 @@ app/src/main/res/
 |--------------|-----------|
 | Change a color/theme | `ui/theme/Color.kt`, `ColorScheme.kt`, `Theme.kt` |
 | Add a setting | `services/Settings.kt` + `ui/view/settings/*.kt` |
+| Add a settings page | `GlassSettingsScaffold` + `ui/view/settings/*.kt` |
 | Add a new screen | `ui/view/` + register in `ui/view/Base.kt` |
+| Make a surface glassy / blurred | `ui/components/Glass.kt` (`GlassSurface`) |
 | Add a home tab | `ui/view/Home.kt` (enum) + `ui/view/home/*.kt` |
 | Modify song parsing | `services/groove/Song.kt` |
 | Change playback logic | `services/radio/Radio.kt` |

@@ -18,7 +18,11 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
+import androidx.compose.foundation.shape.RoundedCornerShape
+import dev.chrisbanes.haze.hazeSource
 import io.github.zyrouge.symphony.ui.components.GlassSettingsScaffold
+import io.github.zyrouge.symphony.ui.components.GlassSurface
+import io.github.zyrouge.symphony.ui.components.LocalHazeState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -81,9 +85,10 @@ fun LibraryStatsView(context: ViewContext) {
     ) { contentPadding ->
         Column(
             modifier = Modifier
-                .padding(contentPadding)
+                .hazeSource(state = LocalHazeState.current, zIndex = 1f)
                 .verticalScroll(rememberScrollState())
-                .padding(20.dp),
+                .padding(contentPadding)
+                .padding(horizontal = 14.dp, vertical = 8.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
             StatRow(
@@ -131,7 +136,10 @@ private fun StatRow(
     value: String,
     note: String? = null,
 ) {
-    Card(modifier = Modifier.fillMaxWidth()) {
+    GlassSurface(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(24.dp),
+    ) {
         Row(
             modifier = Modifier
                 .fillMaxWidth()
