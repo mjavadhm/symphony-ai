@@ -196,7 +196,6 @@ class MediaExposer(private val symphony: Symphony) {
         emitUpdate(true)
         uris.clear()
         explorer = SimpleFileSystem.Folder()
-        symphony.database.songCache.clear()
         emitUpdate(false)
     }
 

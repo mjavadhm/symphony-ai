@@ -357,7 +357,10 @@ fun ImagePreserver.Quality.label(context: ViewContext) = when (this) {
 }
 
 private fun refreshMediaLibrary(symphony: Symphony, clearCache: Boolean = false) {
-    symphony.radio.stop()
+    if (clearCache) {
+        // فقط موقع پاکسازی کامل کش (که ID ها عوض میشن) پخش متوقف بشه
+        symphony.radio.stop()
+    }
     symphony.groove.coroutineScope.launch {
         val options = Groove.FetchOptions(
             resetInMemoryCache = true,

@@ -457,18 +457,20 @@ class RecommendationEngine(private val symphony: Symphony) {
     }
 
     // ---- Helpers ----
-    private var pathIndexCache: Pair<Int, Map<String, String>>? = null
+    private var pathIndexCache: Pair<List<String>, Map<String, String>>? = null
 
     private fun pathIndex(): Map<String, String> {
         val songIds = symphony.groove.song.all.value
-        pathIndexCache?.let { if (it.first == songIds.size) return it.second }
-        val map = HashMap<String, String>(songIds.size * 2)
+        pathIndexCache?.let {
+            if (it.first === songIds) return it.second
+        }
+        val map = HashMap<String, String>()
         for (id in songIds) {
             val song = symphony.groove.song.get(id) ?: continue
             map[song.path.lowercase()] = song.id
             map[song.path.substringAfterLast('/').lowercase()] = song.id
         }
-        pathIndexCache = songIds.size to map
+        pathIndexCache = songIds to map
         return map
     }
 

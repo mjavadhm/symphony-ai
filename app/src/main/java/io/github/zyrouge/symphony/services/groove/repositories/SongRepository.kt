@@ -73,8 +73,8 @@ class SongRepository(private val symphony: Symphony) {
     }
 
     fun reset() {
-        cache.clear()
-        pathCache.clear()
+        // cache و pathCache عمداً نگه داشته میشن تا حین rescan،
+        // آهنگ در حال پخش و صف همچنان قابل resolve باشن و پخش قطع نشه.
         explorer = SimpleFileSystem.Folder()
         emitIds()
         _all.update {
