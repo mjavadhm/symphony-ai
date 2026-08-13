@@ -7,40 +7,62 @@ import io.github.zyrouge.symphony.services.groove.Groove
 import io.github.zyrouge.symphony.utils.HttpClient
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
-import kotlinx.serialization.json.Json
-import kotlinx.serialization.json.JsonArray
-import kotlinx.serialization.json.JsonElement
-import kotlinx.serialization.json.JsonObject
-import kotlinx.serialization.json.JsonPrimitive
-import kotlinx.serialization.json.contentOrNull
-import kotlinx.serialization.json.jsonArray
-import kotlinx.serialization.json.jsonObject
-import kotlinx.serialization.json.jsonPrimitive
+import kotlinx.serialization.json.*
 import okhttp3.Request
 import okhttp3.Response
 import java.net.URI
 
+enum class SpotizerSearchType(val apiValue: String) {
+    TRACK("track"),
+    ARTIST("artist"),
+    ALBUM("album"),
+}
+
+sealed interface SpotizerResult {
+    val id: String
+    val title: String
+    val artworkUrl: String?
+}
+
 data class OnlineTrack(
-    val id: String,
-    val title: String,
+    override val id: String,
+    override val title: String,
     val artist: String?,
     val album: String?,
     val durationSeconds: Long?,
-    val artworkUrl: String?,
+    override val artworkUrl: String?,
     val downloadUrl: String,
-)
+) : SpotizerResult
+
+data class OnlineArtist(
+    override val id: String,
+    override val title: String,
+    override val artworkUrl: String?,
+    val albumCount: Int?,
+    val fanCount: Long?,
+) : SpotizerResult
+
+data class OnlineAlbum(
+    override val id: String,
+    override val title: String,
+    override val artworkUrl: String?,
+    val artist: String?,
+    val trackCount: Int?,
+) : SpotizerResult
 
 class OnlineService(private val baseUrl: String) {
     private val json = Json { ignoreUnknownKeys = true }
 
-    suspend fun search(query: String): List<OnlineTrack> = withContext(Dispatchers.IO) {
-        val url = resolve(apiPath("search")) + "?q=" +
-            java.net.URLEncoder.encode(query, Charsets.UTF_8.name()) + "&type=track&limit=30"
-        execute(Request.Builder().url(url).get().build()).use { response ->
-            if (!response.isSuccessful) error("Service returned HTTP ${response.code}")
-            parseTracks(json.parseToJsonElement(response.body?.string().orEmpty()))
+    suspend fun search(query: String, type: SpotizerSearchType): List<SpotizerResult> =
+        withContext(Dispatchers.IO) {
+            val url = resolve(apiPath("search")) + "?q=" +
+                java.net.URLEncoder.encode(query, Charsets.UTF_8.name()) +
+                "&type=${type.apiValue}&limit=30"
+            execute(Request.Builder().url(url).get().build()).use { response ->
+                if (!response.isSuccessful) error("Service returned HTTP ${response.code}")
+                parseResults(json.parseToJsonElement(response.body?.string().orEmpty()), type)
+            }
         }
-    }
 
     suspend fun download(
         context: Context,
@@ -53,7 +75,7 @@ class OnlineService(private val baseUrl: String) {
         val parent = DocumentsContract.buildDocumentUriUsingTree(
             treeUri, DocumentsContract.getTreeDocumentId(treeUri)
         )
-        val extension = if (track.downloadUrl.contains("quality=FLAC", ignoreCase = true)) "flac" else "mp3"
+        val extension = "mp3"
         val baseName = safeName(listOfNotNull(track.artist, track.title).joinToString(" - "))
         val existing = context.contentResolver.query(
             DocumentsContract.buildChildDocumentsUriUsingTree(parent, DocumentsContract.getDocumentId(parent)),
@@ -62,8 +84,7 @@ class OnlineService(private val baseUrl: String) {
         var fileName = "$baseName.$extension"
         var suffix = 2
         while (fileName in existing) fileName = "$baseName ($suffix).$extension".also { suffix++ }
-        val mime = if (extension.equals("mp3", true)) "audio/mpeg" else "audio/$extension"
-        val document = DocumentsContract.createDocument(context.contentResolver, parent, mime, fileName)
+        val document = DocumentsContract.createDocument(context.contentResolver, parent, "audio/mpeg", fileName)
             ?: error("Could not create the destination file")
         try {
             execute(Request.Builder().url(resolve(track.downloadUrl)).get().build()).use { response ->
@@ -92,11 +113,11 @@ class OnlineService(private val baseUrl: String) {
         fileName
     }
 
-    private fun parseTracks(root: JsonElement): List<OnlineTrack> {
+    private fun parseResults(root: JsonElement, type: SpotizerSearchType): List<SpotizerResult> {
         val items = when (root) {
             is JsonArray -> root
             is JsonObject -> sequenceOf("results", "items", "tracks", "songs", "data")
-                .mapNotNull { root[it] }.mapNotNull { it as? JsonArray }.firstOrNull() ?: JsonArray(emptyList())
+                .mapNotNull { root[it] as? JsonArray }.firstOrNull() ?: JsonArray(emptyList())
             else -> JsonArray(emptyList())
         }
         return items.mapNotNull { element ->
@@ -104,20 +125,36 @@ class OnlineService(private val baseUrl: String) {
             fun text(vararg keys: String) = keys.firstNotNullOfOrNull { key ->
                 (item[key] as? JsonPrimitive)?.contentOrNull
             }
-            val title = text("title", "name", "track_name") ?: return@mapNotNull null
-            val id = text("id", "track_id", "uuid") ?: return@mapNotNull null
-            OnlineTrack(
-                id = id,
-                title = title,
-                artist = text("artist", "artist_name", "author"),
-                album = text("album", "album_name"),
-                durationSeconds = text("duration", "duration_seconds")?.toDoubleOrNull()?.toLong(),
-                artworkUrl = text(
-                    "cover_medium", "cover_big", "cover_xl", "cover_small",
-                    "artwork_url", "artworkUrl", "cover_url", "thumbnail"
-                ),
-                downloadUrl = apiPath("tracks/$id/download") + "?quality=MP3_320",
+            fun image() = text(
+                "cover_medium", "picture_medium", "cover_big", "picture_big",
+                "artwork_url", "artworkUrl", "cover_url", "thumbnail"
             )
+            val id = text("id", "track_id", "artist_id", "album_id", "uuid") ?: return@mapNotNull null
+            when (type) {
+                SpotizerSearchType.TRACK -> {
+                    val title = text("title", "name", "track_name") ?: return@mapNotNull null
+                    OnlineTrack(
+                        id, title, text("artist", "artist_name", "author"),
+                        text("album", "album_name"),
+                        text("duration", "duration_seconds")?.toDoubleOrNull()?.toLong(), image(),
+                        apiPath("tracks/$id/download") + "?quality=MP3_320",
+                    )
+                }
+                SpotizerSearchType.ARTIST -> OnlineArtist(
+                    id = id,
+                    title = text("name", "artist", "artist_name") ?: return@mapNotNull null,
+                    artworkUrl = image(),
+                    albumCount = text("nb_albums", "album_count")?.toIntOrNull(),
+                    fanCount = text("nb_fans", "fan_count")?.toLongOrNull(),
+                )
+                SpotizerSearchType.ALBUM -> OnlineAlbum(
+                    id = id,
+                    title = text("title", "name", "album", "album_name") ?: return@mapNotNull null,
+                    artworkUrl = image(),
+                    artist = text("artist", "artist_name"),
+                    trackCount = text("nb_tracks", "track_count")?.toIntOrNull(),
+                )
+            }
         }
     }
 
@@ -128,5 +165,5 @@ class OnlineService(private val baseUrl: String) {
     }
     private fun execute(request: Request): Response = HttpClient.newCall(request).execute()
     private fun safeName(value: String) = value.replace(Regex("[\\\\/:*?\"<>|\\p{Cntrl}]"), "_")
-        .trim().trim('.').take(120).ifBlank { "Online track" }
+        .trim().trim('.').take(120).ifBlank { "Spotizer track" }
 }

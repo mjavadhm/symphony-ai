@@ -130,7 +130,7 @@ enum class HomePage(
         unselectedIcon = { Icons.Outlined.AutoAwesome }
     ),
     Online(
-        label = { "Online" },
+        label = { "Spotizer" },
         selectedIcon = { Icons.Filled.CloudDownload },
         unselectedIcon = { Icons.Outlined.CloudDownload }
     ),

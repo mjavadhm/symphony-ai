@@ -88,7 +88,7 @@ fun HomePageSettingsView(context: ViewContext) {
                             if (valid) context.symphony.settings.onlineServiceBaseUrl.setValue(value.trimEnd('/'))
                         },
                         modifier = Modifier.padding(horizontal = 16.dp),
-                        label = { Text("Online service URL") },
+                        label = { Text("Spotizer service URL") },
                         supportingText = { if (!validOnlineUrl) Text("Enter a valid HTTP(S) URL") },
                         isError = !validOnlineUrl,
                         singleLine = true,
