@@ -320,6 +320,15 @@ class Settings(private val symphony: Symphony) {
                 putStringSet(key, value.map { it.toString() }.toSet())
             }
     }
+    val onlineServiceBaseUrl = object : Entry<String>("online_service_base_url") {
+        override fun getValueInternal() = getSharedPreferences()
+            .getString(key, DEFAULT_ONLINE_SERVICE_BASE_URL)
+            ?: DEFAULT_ONLINE_SERVICE_BASE_URL
+
+        override fun setValueInternal(value: String) = getSharedPreferences().edit {
+            putString(key, value)
+        }
+    }
     val artworkQuality = EnumEntry(
         "artwork_quality",
         enumEntries<ImagePreserver.Quality>(),
@@ -333,4 +342,8 @@ class Settings(private val symphony: Symphony) {
 
     private fun getSharedPreferences() = symphony.applicationContext
         .getSharedPreferences("settings", Context.MODE_PRIVATE)
+
+    companion object {
+        const val DEFAULT_ONLINE_SERVICE_BASE_URL = "http://localhost:8137"
+    }
 }

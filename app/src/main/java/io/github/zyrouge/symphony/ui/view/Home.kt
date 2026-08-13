@@ -21,7 +21,6 @@ import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
@@ -38,6 +37,8 @@ import androidx.compose.material.icons.filled.FolderOpen
 import androidx.compose.material.icons.filled.Group
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.MusicNote
+import androidx.compose.material.icons.filled.CloudDownload
+import androidx.compose.material.icons.outlined.CloudDownload
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Settings
@@ -109,6 +110,7 @@ import io.github.zyrouge.symphony.ui.view.home.PlaylistsView
 import io.github.zyrouge.symphony.ui.view.home.SongsView
 import io.github.zyrouge.symphony.ui.view.home.TreeView
 import io.github.zyrouge.symphony.ui.view.home.DiscoverView
+import io.github.zyrouge.symphony.ui.view.home.OnlineView
 import kotlinx.serialization.Serializable
 
 enum class HomePage(
@@ -126,6 +128,11 @@ enum class HomePage(
         label = { "Discover" }, // We'll add translations later, hardcode for now
         selectedIcon = { Icons.Filled.AutoAwesome },
         unselectedIcon = { Icons.Outlined.AutoAwesome }
+    ),
+    Online(
+        label = { "Online" },
+        selectedIcon = { Icons.Filled.CloudDownload },
+        unselectedIcon = { Icons.Outlined.CloudDownload }
     ),
     Songs(
         kind = Groove.Kind.SONG,
@@ -233,6 +240,7 @@ fun HomeView(context: ViewContext) {
                         when (page) {
                     HomePage.ForYou -> ForYouView(context)
                     HomePage.Discover -> DiscoverView(context)
+                    HomePage.Online -> OnlineView(context)
                     HomePage.Songs -> SongsView(context)
                     HomePage.Albums -> AlbumsView(context)
                     HomePage.Artists -> ArtistsView(context)
