@@ -44,6 +44,7 @@ class RadioPlayer(val symphony: Symphony, val id: String, val uri: Uri) {
         private set
     var hasPlayedOnce = false
         private set
+    private var released = false
     var volume = MAX_VOLUME
         private set
     var speed = DEFAULT_SPEED
@@ -71,17 +72,21 @@ class RadioPlayer(val symphony: Symphony, val id: String, val uri: Uri) {
     init {
         unsafeMediaPlayer = MediaPlayer().also { ump ->
             ump.setOnPreparedListener {
+                if (released) return@setOnPreparedListener
                 state = State.Prepared
                 ump.playbackParams.setAudioFallbackMode(PlaybackParams.AUDIO_FALLBACK_MODE_DEFAULT)
                 createDurationTimer()
                 onPrepared?.invoke()
             }
             ump.setOnCompletionListener {
+                if (released) return@setOnCompletionListener
                 state = State.Finished
                 onFinish?.invoke()
             }
             ump.setOnErrorListener { _, what, extra ->
+                if (released) return@setOnErrorListener true
                 state = State.Destroyed
+                destroyDurationTimer()
                 onError?.invoke(what, extra)
                 true
             }
@@ -104,11 +109,29 @@ class RadioPlayer(val symphony: Symphony, val id: String, val uri: Uri) {
     fun stop() = destroy()
 
     fun destroy() {
+        if (released) {
+            return
+        }
+        released = true
+        // MediaPlayer.stop() is only legal once the player has actually been prepared;
+        // calling it while still Unprepared/Preparing (rapid skips, autoplay re-staging)
+        // throws IllegalStateException. release() is safe from any state.
+        val stoppable = state == State.Prepared || state == State.Finished
         state = State.Destroyed
         destroyDurationTimer()
         symphony.groove.coroutineScope.launch {
-            unsafeMediaPlayer.stop()
-            unsafeMediaPlayer.release()
+            if (stoppable) {
+                try {
+                    unsafeMediaPlayer.stop()
+                } catch (err: Exception) {
+                    Logger.warn("RadioPlayer", "stopping media player failed", err)
+                }
+            }
+            try {
+                unsafeMediaPlayer.release()
+            } catch (err: Exception) {
+                Logger.warn("RadioPlayer", "releasing media player failed", err)
+            }
         }
     }
 
@@ -225,6 +248,9 @@ class RadioPlayer(val symphony: Symphony, val id: String, val uri: Uri) {
         private set
 
     private fun createDurationTimer() {
+        // onPrepared and start() both create one; cancel the old one so its thread
+        // doesn't leak and double-count activelyPlayedMs.
+        destroyDurationTimer()
         playbackPositionUpdater = kotlin.concurrent.timer(period = 100L) {
             activelyPlayedMs += 100
             emitPlaybackPosition()
