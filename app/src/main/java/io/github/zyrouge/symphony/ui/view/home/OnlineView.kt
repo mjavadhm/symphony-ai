@@ -1,13 +1,9 @@
 package io.github.zyrouge.symphony.ui.view.home
 
-import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.weight
+import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.Button
@@ -54,7 +50,10 @@ fun OnlineView(context: ViewContext) {
         if (!loading && message == null && query.isNotBlank() && results.isEmpty()) Text("No results")
         LazyColumn(verticalArrangement = Arrangement.spacedBy(10.dp)) {
             items(results, key = { it.id }) { track ->
-                GlassSurface(Modifier.fillMaxWidth()) {
+                GlassSurface(
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(20.dp),
+                ) {
                     Row(Modifier.padding(12.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                         track.artworkUrl?.let { AsyncImage(it, track.title, Modifier.padding(0.dp).weight(0.25f)) }
                         Column(Modifier.weight(1f)) {
