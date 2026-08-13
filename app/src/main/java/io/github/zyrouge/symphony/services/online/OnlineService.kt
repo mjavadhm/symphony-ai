@@ -28,17 +28,14 @@ data class OnlineTrack(
     val durationSeconds: Long?,
     val artworkUrl: String?,
     val downloadUrl: String,
-    val source: String?,
 )
 
 class OnlineService(private val baseUrl: String) {
     private val json = Json { ignoreUnknownKeys = true }
 
     suspend fun search(query: String): List<OnlineTrack> = withContext(Dispatchers.IO) {
-        val operation = discoverSearchOperation()
-        val separator = if ('?' in operation.path) '&' else '?'
-        val url = resolve(operation.path) + separator + operation.queryName + "=" +
-            java.net.URLEncoder.encode(query, Charsets.UTF_8.name())
+        val url = resolve(apiPath("search")) + "?q=" +
+            java.net.URLEncoder.encode(query, Charsets.UTF_8.name()) + "&type=track&limit=30"
         execute(Request.Builder().url(url).get().build()).use { response ->
             if (!response.isSuccessful) error("Service returned HTTP ${response.code}")
             parseTracks(json.parseToJsonElement(response.body?.string().orEmpty()))
@@ -56,8 +53,7 @@ class OnlineService(private val baseUrl: String) {
         val parent = DocumentsContract.buildDocumentUriUsingTree(
             treeUri, DocumentsContract.getTreeDocumentId(treeUri)
         )
-        val extension = URI(track.downloadUrl).path.substringAfterLast('.', "mp3")
-            .takeIf { it.matches(Regex("[A-Za-z0-9]{1,5}")) } ?: "mp3"
+        val extension = if (track.downloadUrl.contains("quality=FLAC", ignoreCase = true)) "flac" else "mp3"
         val baseName = safeName(listOfNotNull(track.artist, track.title).joinToString(" - "))
         val existing = context.contentResolver.query(
             DocumentsContract.buildChildDocumentsUriUsingTree(parent, DocumentsContract.getDocumentId(parent)),
@@ -96,31 +92,6 @@ class OnlineService(private val baseUrl: String) {
         fileName
     }
 
-    private data class SearchOperation(val path: String, val queryName: String)
-
-    private fun discoverSearchOperation(): SearchOperation {
-        for (schemaPath in listOf("/openapi.json", "/docs/openapi.json")) {
-            runCatching {
-                execute(Request.Builder().url(resolve(schemaPath)).get().build()).use { response ->
-                    if (!response.isSuccessful) error("HTTP ${response.code}")
-                    val root = json.parseToJsonElement(response.body!!.string()).jsonObject
-                    root["paths"]!!.jsonObject.forEach { (path, methods) ->
-                        val get = methods.jsonObject["get"]?.jsonObject ?: return@forEach
-                        val searchable = path.contains("search", true) ||
-                            get["operationId"]?.jsonPrimitive?.contentOrNull?.contains("search", true) == true
-                        if (searchable) {
-                            val parameter = get["parameters"]?.jsonArray?.firstOrNull {
-                                it.jsonObject["in"]?.jsonPrimitive?.contentOrNull == "query"
-                            }?.jsonObject?.get("name")?.jsonPrimitive?.contentOrNull
-                            if (parameter != null) return SearchOperation(path, parameter)
-                        }
-                    }
-                }
-            }
-        }
-        error("The service OpenAPI document has no searchable GET operation")
-    }
-
     private fun parseTracks(root: JsonElement): List<OnlineTrack> {
         val items = when (root) {
             is JsonArray -> root
@@ -134,22 +105,27 @@ class OnlineService(private val baseUrl: String) {
                 (item[key] as? JsonPrimitive)?.contentOrNull
             }
             val title = text("title", "name", "track_name") ?: return@mapNotNull null
-            val download = text("download_url", "downloadUrl", "audio_url", "audioUrl", "url", "stream_url")
-                ?: return@mapNotNull null
+            val id = text("id", "track_id", "uuid") ?: return@mapNotNull null
             OnlineTrack(
-                id = text("id", "track_id", "uuid") ?: download,
+                id = id,
                 title = title,
                 artist = text("artist", "artist_name", "author"),
                 album = text("album", "album_name"),
                 durationSeconds = text("duration", "duration_seconds")?.toDoubleOrNull()?.toLong(),
-                artworkUrl = text("artwork_url", "artworkUrl", "cover_url", "thumbnail"),
-                downloadUrl = download,
-                source = text("source", "provider", "platform"),
+                artworkUrl = text(
+                    "cover_medium", "cover_big", "cover_xl", "cover_small",
+                    "artwork_url", "artworkUrl", "cover_url", "thumbnail"
+                ),
+                downloadUrl = apiPath("tracks/$id/download") + "?quality=MP3_320",
             )
         }
     }
 
     private fun resolve(path: String): String = URI(baseUrl.trimEnd('/') + "/").resolve(path).toString()
+    private fun apiPath(path: String): String {
+        val configuredPath = runCatching { URI(baseUrl).path.trimEnd('/') }.getOrDefault("")
+        return if (configuredPath.endsWith("/v1")) path else "v1/$path"
+    }
     private fun execute(request: Request): Response = HttpClient.newCall(request).execute()
     private fun safeName(value: String) = value.replace(Regex("[\\\\/:*?\"<>|\\p{Cntrl}]"), "_")
         .trim().trim('.').take(120).ifBlank { "Online track" }
