@@ -20,19 +20,19 @@ import dev.chrisbanes.haze.HazeTint
 import dev.chrisbanes.haze.hazeEffect
 
 /**
- * HazeState مشترک بین پسزمینهی داینامیک (source) و همهی سطحهای شیشهای (child).
- * توی HomeView ساخته و provide میشه.
+ * The HazeState shared between the dynamic background (source) and every glass surface (child).
+ * It is created and provided inside HomeView.
  */
 val LocalHazeState = compositionLocalOf { HazeState() }
 
 /**
- * پدینگ نوارهای بالا/پایین Home که بهجای padding سفت،
- * به contentPadding لیستها داده میشه تا محتوا از زیر نوارها رد بشه.
+ * Padding for Home's top/bottom bars. Instead of hard padding it is handed to the lists'
+ * contentPadding, so content scrolls underneath the bars.
  */
 val LocalHomeContentPadding = compositionLocalOf { PaddingValues(0.dp) }
 
 /**
- * یه سطح شیشهای واقعی (بلور از پشت) برای پیل/دایرههای سبک تلگرام.
+ * A genuine glass surface (blurring what is behind it) for Telegram-style pills and circles.
  */
 @Composable
 fun GlassSurface(
@@ -45,7 +45,7 @@ fun GlassSurface(
 ) {
     val hazeState = LocalHazeState.current
     val surface = MaterialTheme.colorScheme.surface
-    // تو تم روشن شیشه باید شیریتر باشه تا متن تیره روش خوانا بمونه
+    // In the light theme the glass has to be milkier so dark text on top stays readable
     val effectiveTintAlpha = when {
         surface.luminance() > 0.5f -> (tintAlpha + 0.2f).coerceAtMost(1f)
         else -> tintAlpha
