@@ -76,7 +76,7 @@ fun NowPlayingBodyBottomBar(
             horizontalArrangement = Arrangement.spacedBy(28.dp, Alignment.CenterHorizontally),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            // صف پخش — چپ
+            // Play queue — left
             Row(
                 modifier = Modifier
                     .clip(RoundedCornerShape(24.dp))
@@ -99,7 +99,7 @@ fun NowPlayingBodyBottomBar(
                         .copy(fontWeight = FontWeight.Bold),
                 )
             }
-            // تنطیمات پخش — وسط
+            // Playback settings — center
             IconButton(
                 modifier = Modifier.background(
                     Color.White.copy(alpha = 0.12f),
@@ -109,7 +109,7 @@ fun NowPlayingBodyBottomBar(
             ) {
                 Icon(Icons.Filled.MoreHoriz, null)
             }
-            // لیریک — راست
+            // Lyrics — right
             states.showLyrics.let { showLyricsState ->
                 val showLyrics by showLyricsState.collectAsState()
 
