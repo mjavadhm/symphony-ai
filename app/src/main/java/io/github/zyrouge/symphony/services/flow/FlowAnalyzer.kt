@@ -17,8 +17,9 @@ import kotlin.math.pow
 import kotlin.math.sqrt
 
 /**
- * Flow — تحلیل آکوستیک ۵ ثانیه اول و آخر هر آهنگ برای پیدا کردن
- * نرمترین ترنزیشن بین آهنگها. بدون مدل AI — فقط DSP خالص.
+ * Flow — acoustic analysis of the first and last 5 seconds of every song, used to
+ * find the smoothest possible transition between tracks. No AI model involved,
+ * just plain DSP.
  */
 class FlowAnalyzer(private val symphony: Symphony) {
     data class ScanState(
@@ -36,14 +37,14 @@ class FlowAnalyzer(private val symphony: Symphony) {
         private const val SAMPLE_RATE = 48000
         private const val SEGMENT_SECONDS = 5
 
-        // وزن هر ویژگی در فاصلهی ترنزیشن
+        // Weight of each feature in the transition distance
         private const val W_CENTROID = 0.35f
         private const val W_ENERGY = 0.30f
         private const val W_ROLLOFF = 0.20f
         private const val W_ONSET = 0.15f
     }
 
-    // ==================== اسکن پسزمینه ====================
+    // ==================== Background scan ====================
 
     fun startScan() {
         if (scanState.value.isActive) return
@@ -81,7 +82,7 @@ class FlowAnalyzer(private val symphony: Symphony) {
                         symphony.database.trackFlow.upsert(it)
                     }
                 } catch (_: Exception) {
-                    // فایل خراب — رد شو
+                    // Corrupt file — skip it
                 }
             }
             done++
@@ -97,13 +98,13 @@ class FlowAnalyzer(private val symphony: Symphony) {
 
     private fun analyzeSong(decoder: AudioDecoder, songId: String, uri: Uri): TrackFlow? {
         val duration = decoder.getDurationSeconds(uri)
-        if (duration < 20) return null // خیلی کوتاهه، ترنزیشن معنی نداره
+        if (duration < 20) return null // Too short for a transition to mean anything
 
-        // ۱۰ ثانیه اول و ۱۲ ثانیه آخر رو decode میکنیم (با حاشیه برای سکوت/fade)
+        // Decode the first 10 seconds and the last 12 seconds (extra headroom for silence/fade)
         val headRaw = decoder.decodeRange(uri, 0, 10) ?: return null
         val tailRaw = decoder.decodeRange(uri, maxOf(0, duration - 12), 12) ?: return null
 
-        // بخش «واقعاً شنیدنی» رو جدا میکنیم (ردشدن از سکوت و fade-out)
+        // Isolate the genuinely audible part (skipping silence and fade-out)
         val head = audibleSegment(headRaw, fromStart = true) ?: return null
         val tail = audibleSegment(tailRaw, fromStart = false) ?: return null
 
@@ -122,12 +123,12 @@ class FlowAnalyzer(private val symphony: Symphony) {
     // ==================== DSP ====================
 
     /**
-     * ۵ ثانیه «شنیدنی» رو برمیگردونه:
-     * - fromStart=true: از اولین جای غیرساکت به بعد (ردشدن از سکوت اول)
-     * - fromStart=false: تا آخرین جای غیرساکت (ردشدن از fade-out و سکوت آخر)
+     * Returns 5 seconds of audible audio:
+     * - fromStart=true: starting at the first non-silent point (skips leading silence)
+     * - fromStart=false: ending at the last non-silent point (skips fade-out and trailing silence)
      */
     private fun audibleSegment(samples: FloatArray, fromStart: Boolean): FloatArray? {
-        val win = SAMPLE_RATE / 4 // پنجرههای ۰.۲۵ ثانیهای
+        val win = SAMPLE_RATE / 4 // 0.25 second windows
         val n = samples.size / win
         if (n == 0) return null
         val rms = FloatArray(n) { i ->
@@ -136,7 +137,7 @@ class FlowAnalyzer(private val symphony: Symphony) {
             sqrt(sum / win).toFloat()
         }
         val maxRms = rms.max()
-        if (maxRms < 1e-4f) return null // کل بازه ساکته
+        if (maxRms < 1e-4f) return null // The entire range is silent
         val threshold = maxRms * 0.05f
         val segLen = SAMPLE_RATE * SEGMENT_SECONDS
         return if (fromStart) {
@@ -159,19 +160,19 @@ class FlowAnalyzer(private val symphony: Symphony) {
         val onset: Float,
     )
 
-    /** چهار ویژگی آکوستیک، همه نرمالشده بین ۰ و ۱ */
+    /** Four acoustic features, all normalized between 0 and 1 */
     private fun fingerprint(samples: FloatArray): Fingerprint {
-        // --- انرژی: مستقیم از خود نمونهها (RMS) ---
+        // --- Energy: taken straight from the samples (RMS) ---
         var sq = 0.0
         for (s in samples) sq += s * s
         val rmsVal = sqrt(sq / samples.size)
         val energy = ((log10(rmsVal + 1e-6) + 3.0) / 3.0).toFloat().coerceIn(0f, 1f)
 
-        // --- بقیه از mel spectrogram (از FFT موجود پروژه استفاده میکنیم) ---
+        // --- The rest come from the mel spectrogram (reusing the project's existing FFT) ---
         val nMels = 64
-        // فقط فریمهای واقعی، نه فریمهای repeat-pad شده
+        // Only the real frames, not the repeat-padded ones
         val realFrames = minOf(1001, maxOf(1, (samples.size - 1024) / 480 + 1))
-        val spec = mel.extract(samples) // dB، فلتشده [1001 × 64]
+        val spec = mel.extract(samples) // dB, flattened [1001 x 64]
 
         var centroidNum = 0.0
         var totalPower = 0.0
@@ -188,7 +189,7 @@ class FlowAnalyzer(private val symphony: Symphony) {
             }
             framePower[t] = frameTotal
             totalPower += frameTotal
-            // rolloff: کوچکترین باندی که ۸۵٪ انرژی فریم زیرشه
+            // rolloff: the lowest band under which 85% of the frame's energy sits
             var cum = 0.0
             var r = nMels - 1
             for (m in 0 until nMels) {
@@ -202,7 +203,7 @@ class FlowAnalyzer(private val symphony: Symphony) {
         } else 0f
         val rolloff = (rolloffSum / realFrames / (nMels - 1)).toFloat().coerceIn(0f, 1f)
 
-        // --- onset density: تعداد پرشهای ناگهانی انرژی در ثانیه ---
+        // --- onset density: number of sudden energy jumps per second ---
         var onsets = 0
         val avgPower = totalPower / realFrames
         for (t in 1 until realFrames) {
@@ -214,16 +215,16 @@ class FlowAnalyzer(private val symphony: Symphony) {
         return Fingerprint(energy, centroid, rolloff, onset)
     }
 
-    // ==================== مرتبسازی ====================
+    // ==================== Ordering ====================
 
-    /** فاصلهی ترنزیشن از «ته A» به «سر B» — کمتر یعنی نرمتر */
+    /** Transition distance from A's tail to B's head — lower means smoother */
     fun transitionDistance(a: TrackFlow, b: TrackFlow): Float =
         W_CENTROID * abs(a.tailCentroid - b.headCentroid) +
                 W_ENERGY * abs(a.tailEnergy - b.headEnergy) +
                 W_ROLLOFF * abs(a.tailRolloff - b.headRolloff) +
                 W_ONSET * abs(a.tailOnset - b.headOnset)
 
-    /** زنجیره حریصانه: هر بار نزدیکترین «سر» به «ته» آهنگ فعلی */
+    /** Greedy chain: each step picks the head that is closest to the current song's tail */
     suspend fun orderByFlow(songIds: List<String>, startSongId: String? = null): List<String> {
         if (songIds.size <= 2) return songIds
         val flows = symphony.database.trackFlow.getAll().associateBy { it.songId }
