@@ -219,7 +219,7 @@ fun DiscoverView(context: ViewContext) {
                                 val filePaths = if (searchMode == 0) {
                                     val results = context.symphony.semanticSearch.searchDetailed(textQuery, limit)
                                     if (limitMode == 1 && results.isNotEmpty()) {
-                                        // آستانه نسبی: نسبت به بهترین نتیجه سنجیده میشه
+                                        // Relative threshold: measured against the best result
                                         val topScore = results.first().hybridScore
                                         results.filter { it.hybridScore >= (similarityThreshold / 100f) * topScore }
                                             .mapNotNull { it.track.filePath }
