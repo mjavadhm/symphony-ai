@@ -48,11 +48,12 @@ class AudioDecoder(private val context: Context) {
         }
 
         val durationSeconds = (durationUs / 1000000).toInt()
-        // ✅ فاصلهی شروع چانکها همون ۳۰ ثانیه میمونه (پوشش آهنگ تغییری نمیکنه)
+        // ✅ The spacing between chunk starts stays at 30 seconds (song coverage is unchanged)
         val chunkStep = 30
 
-        // ✅ ولی فقط ۱۱ ثانیه decode میشه — mel بههرحال به ۱۰۰۱ فریم (~۱۰ ثانیه) truncate میکنه.
-        // ۱ ثانیهی اضافه تضمین میکنه فریمها کم نیان و خروجی بیتبهبیت با نسخهی ۳۰ ثانیهای یکسان باشه.
+        // ✅ But only 11 seconds get decoded — mel truncates to 1001 frames (~10 seconds) anyway.
+        // The extra second guarantees no frames go missing, so the output stays bit-for-bit
+        // identical to the old 30 second version.
         val decodeLength = 11
 
         val offsets = mutableListOf<Int>()
@@ -69,7 +70,7 @@ class AudioDecoder(private val context: Context) {
 
             val chunkFloats = decodeChunk(
                 extractor, trackIndex, offset,
-                decodeLength,          // ← قبلاً chunkLength (۳۰) بود
+                decodeLength,          // ← used to be chunkLength (30)
                 channelCount, sampleRate
             )
             if (chunkFloats != null && chunkFloats.isNotEmpty()) {
@@ -109,7 +110,7 @@ class AudioDecoder(private val context: Context) {
         return 0
     }
 
-    /** یک بازه دلخواه از فایل رو decode میکنه — خروجی مونو 48kHz */
+    /** Decodes an arbitrary range of the file — output is mono 48kHz */
     fun decodeRange(uri: Uri, offsetSeconds: Int, durationSeconds: Int): FloatArray? {
         val extractor = MediaExtractor()
         try {
@@ -148,7 +149,7 @@ class AudioDecoder(private val context: Context) {
         offsetSeconds: Int,
         durationSeconds: Int,
         channelCount: Int,
-        sampleRate: Int,          // ← جدید
+        sampleRate: Int,          // ← new
     ): FloatArray? {
         extractor.selectTrack(trackIndex)
         extractor.seekTo(offsetSeconds * 1000000L, MediaExtractor.SEEK_TO_CLOSEST_SYNC)
@@ -167,8 +168,8 @@ class AudioDecoder(private val context: Context) {
             return null
         }
 
-        // ✅ به جای ArrayList<Float> boxed: آرایه primitive با ظرفیت مشخص
-        val capacity = sampleRate * durationSeconds + sampleRate // +۱ ثانیه حاشیه
+        // ✅ Instead of a boxed ArrayList<Float>: a primitive array with a known capacity
+        val capacity = sampleRate * durationSeconds + sampleRate // +1 second of headroom
         val output = FloatArray(capacity)
         var written = 0
 
@@ -207,7 +208,7 @@ class AudioDecoder(private val context: Context) {
 
                         val shortBuffer = outputBuffer.order(ByteOrder.LITTLE_ENDIAN).asShortBuffer()
 
-                        // ✅ نوشتن مستقیم در آرایه، بدون هیچ boxing/کپی اضافه
+                        // ✅ Write straight into the array, with no extra boxing or copying
                         while (shortBuffer.remaining() >= channelCount && written < capacity) {
                             var sum = 0f
                             for (c in 0 until channelCount) {
@@ -218,7 +219,7 @@ class AudioDecoder(private val context: Context) {
                     }
                     codec.releaseOutputBuffer(outputBufferId, false)
 
-                    // ✅ ظرفیت پر شد؟ همینجا تمومش کن
+                    // ✅ Capacity full? Stop right here
                     if (written >= capacity || (bufferInfo.flags and MediaCodec.BUFFER_FLAG_END_OF_STREAM != 0)) {
                         outputEOS = true
                     }

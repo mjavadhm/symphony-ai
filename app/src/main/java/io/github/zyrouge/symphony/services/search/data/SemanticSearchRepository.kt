@@ -50,7 +50,7 @@ class SemanticSearchRepository(boxStore: BoxStore) {
         val a = normalizeKey(artist)
         val d = (durationMs / 1000).toInt()
         
-        // تلورانس ±۵ ثانیه برای نسخه‌های با کیفیت/منبع متفاوت
+        // ±5 second tolerance, so copies from a different source/quality still match
         for (offset in -5..5) {
             if (cache.contains("$t|$a|${d + offset}")) return true
         }
@@ -70,12 +70,12 @@ class SemanticSearchRepository(boxStore: BoxStore) {
     fun getIndexedTrackCount(): Long = trackBox.count()
 
     /**
-     * ذخیره یک آهنگ با چانک‌های متعدد و محاسبه میانگین امبدینگ.
+     * Stores one song together with its chunks and computes the mean embedding.
      */
     fun insertTrack(filePath: String, title: String, artist: String, durationSeconds: Int, chunkEmbeddings: List<FloatArray>) {
         if (chunkEmbeddings.isEmpty()) return
 
-        // ✅ حذف نسخه‌های قبلی همین ترک (جلوگیری از duplicate در re-index / import دوباره)
+        // ✅ Remove earlier copies of this same track (prevents duplicates on re-index / re-import)
         val existing = trackBox.query(
             TrackEntity_.title.equal(title, QueryBuilder.StringOrder.CASE_INSENSITIVE)
         ).build().find().filter { old ->
@@ -83,14 +83,14 @@ class SemanticSearchRepository(boxStore: BoxStore) {
             kotlin.math.abs(old.durationSeconds - durationSeconds) <= 2
         }
         for (old in existing) {
-            chunkBox.remove(old.chunks)   // اول چانک‌ها، بعد خود ترک
+            chunkBox.remove(old.chunks)   // chunks first, then the track itself
             trackBox.remove(old)
         }
 
-        // ✅ اول تک‌تک چانک‌ها normalize میشن (فیکس باگ maxScore)
+        // ✅ Normalize every chunk individually first (fixes the maxScore bug)
         val normalizedChunks = chunkEmbeddings.map { normalize(it) }
 
-        // Calculate mean embedding از روی چانک‌های normalize شده
+        // Calculate the mean embedding from the normalized chunks
         val meanEmb = FloatArray(512)
         for (emb in normalizedChunks) {
             for (i in 0 until 512) {
@@ -133,7 +133,7 @@ class SemanticSearchRepository(boxStore: BoxStore) {
             TrackChunkEntity_.embedding.nearestNeighbors(queryEmbedding, 200)
         ).build().find()
 
-        // ✅ گروه‌بندی چانک‌های کاندید بر اساس ترک — بدون لود کردن بقیه چانک‌های هر ترک
+        // ✅ Group the candidate chunks by track — without loading each track's other chunks
         val chunksByTrack = candidateChunks.groupBy { it.track.targetId }
 
         val results = mutableListOf<SearchResult>()
@@ -174,7 +174,7 @@ class SemanticSearchRepository(boxStore: BoxStore) {
         topN: Int = 20,
         toleranceSeconds: Int = 2
     ): List<SearchResult> {
-        // پیدا کردن ترک مبدأ با متادیتا — اسکن سبکه (بدون عملیات برداری)
+        // Find the source track by metadata — a cheap scan, no vector work involved
         val sourceTrack = trackBox.query(
             TrackEntity_.title.equal(title, QueryBuilder.StringOrder.CASE_INSENSITIVE)
         ).build().find().find { track ->
@@ -189,7 +189,7 @@ class SemanticSearchRepository(boxStore: BoxStore) {
 
         val sourceEmbedding = sourceTrack.meanEmbedding ?: return emptyList()
 
-        // ✅ جستجوی همسایه‌ها با ایندکس HNSW به جای brute-force
+        // ✅ Neighbor search through the HNSW index instead of brute force
         val neighbors = trackBox.query(
             TrackEntity_.meanEmbedding.nearestNeighbors(sourceEmbedding, topN + 1)
         ).build().findWithScores()
@@ -197,7 +197,7 @@ class SemanticSearchRepository(boxStore: BoxStore) {
         return neighbors.mapNotNull { result ->
             val track = result.get()
             if (track.id == sourceTrack.id) return@mapNotNull null
-            // با VectorDistanceType.COSINE: فاصله = 1 - cosine → شباهت = 1 - فاصله
+            // With VectorDistanceType.COSINE: distance = 1 - cosine → similarity = 1 - distance
             val score = (1.0 - result.score).toFloat()
             SearchResult(track, score, score, score)
         }.take(topN)
@@ -226,8 +226,9 @@ class SemanticSearchRepository(boxStore: BoxStore) {
     }
 
     /**
-     * MMR: تنوع در نتایج — از ردیف شدن ۱۰ آهنگ تقریباً یکسان جلوگیری میکنه.
-     * diversityWeight = 0.3 یعنی ۷۰٪ relevance، ۳۰٪ جریمه‌ی شباهت به انتخاب‌شده‌ها.
+     * MMR: keeps the results varied — it stops ten near-identical songs from lining up.
+     * diversityWeight = 0.3 means 70% relevance and a 30% penalty for being similar to
+     * what has already been picked.
      */
     private fun mmrRerank(
         candidates: List<SearchResult>,
@@ -235,7 +236,7 @@ class SemanticSearchRepository(boxStore: BoxStore) {
         diversityWeight: Float = 0.3f
     ): List<SearchResult> {
         if (candidates.isEmpty()) return emptyList()
-        // برای لیست‌های خیلی بزرگ (حالت Limit by Similarity) MMR لازم نیست و کنده
+        // For very large lists (Limit by Similarity mode) MMR isn't needed and is slow
         if (topN > 100) return candidates.take(topN)
 
         val selected = mutableListOf<SearchResult>()
@@ -277,7 +278,7 @@ class SemanticSearchRepository(boxStore: BoxStore) {
         return dotProduct
     }
 
-    /** امبدینگ میانگین یک ترک از روی متادیتا (برای بردار سلیقه) */
+    /** Mean embedding of a track looked up by metadata (used for the taste vector) */
     fun findTrackEmbedding(title: String, artist: String): FloatArray? {
         val tKey = normalizeKey(title)
         val aKey = normalizeKey(artist)
@@ -293,7 +294,7 @@ class SemanticSearchRepository(boxStore: BoxStore) {
         } ?: candidates.first()).meanEmbedding
     }
 
-    /** جستجوی مستقیم با بردار — هستهی Daily Mix */
+    /** Direct search by vector — the core of Daily Mix */
     fun searchByVector(vector: FloatArray, limit: Int): List<TrackEntity> {
         return trackBox.query(
             TrackEntity_.meanEmbedding.nearestNeighbors(vector, limit)
