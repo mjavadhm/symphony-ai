@@ -69,16 +69,16 @@ import kotlinx.coroutines.launch
 
 internal val defaultHorizontalPadding = 20.dp
 
-// حرکت نرم بین کاور و لیریک — با رها کردن انگشت به نزدیکترین حالت میچسبه
+// Smooth motion between the artwork and the lyrics — letting go snaps to the closest state
 private val lyricsRevealSpec = spring<Float>(
     dampingRatio = 0.85f,
     stiffness = Spring.StiffnessMediumLow,
 )
 
-// درگ عمودی باید حداقل این نسبت از ارتفاع باشه تا صفحه بسته بشه
+// A vertical drag has to cover at least this fraction of the height for the screen to close
 private const val DISMISS_DRAG_FRACTION = 0.15f
 
-// مسافتی که برای رفتن از کاور به لیریک لازمه (نسبت به ارتفاع کانتینر)
+// Distance required to travel from the artwork to the lyrics (relative to the container height)
 private const val LYRICS_DRAG_FRACTION = 0.55f
 
 @Composable
@@ -163,13 +163,14 @@ fun NowPlayingBody(context: ViewContext, data: NowPlayingData) {
 }
 
 /**
- * کاور و لیریک روی هم چیده میشن و با یک progress بین ۰ و ۱ کنترل میشن:
- * - کشیدن کاور به سمت بالا → لیریک میاد بالا
- * - کشیدن لیریک به سمت پایین → لیریک بسته میشه
- * - کشیدن کاور به سمت پایین (وقتی لیریک بسته است) → صفحه بسته میشه
+ * The artwork and the lyrics are stacked on top of each other and driven by a single progress
+ * value between 0 and 1:
+ * - dragging the artwork up → the lyrics come up
+ * - dragging the lyrics down → the lyrics close
+ * - dragging the artwork down (while the lyrics are closed) → the screen closes
  *
- * چون progress مستقیم با انگشت جابهجا میشه، حرکت پیوسته و قابل برگشته و
- * با رها کردن انگشت با spring به نزدیکترین حالت میچسبه.
+ * Because progress follows the finger directly, the motion is continuous and reversible, and
+ * letting go springs it to the nearest state.
  */
 @Composable
 private fun NowPlayingLyricsSwitcher(
@@ -186,7 +187,7 @@ private fun NowPlayingLyricsSwitcher(
     val progress = remember { Animatable(if (states.showLyrics.value) 1f else 0f) }
     var containerHeightPx by remember { mutableStateOf(1f) }
 
-    // همگامسازی با دکمهی لیریک در نوار پایین
+    // Stay in sync with the lyrics button in the bottom bar
     LaunchedEffect(showLyrics) {
         val target = if (showLyrics) 1f else 0f
         if (progress.value != target) {
@@ -233,7 +234,7 @@ private fun NowPlayingLyricsSwitcher(
                         val current = progress.value
                         val wasShowingLyrics = states.showLyrics.value
                         when {
-                            // کشیدن کاور به پایین → بستن صفحهی در حال پخش
+                            // Dragging the artwork down → close the now playing screen
                             !wasShowingLyrics && current <= 0.02f &&
                                     totalDrag > containerHeightPx * DISMISS_DRAG_FRACTION -> {
                                 view.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
@@ -242,7 +243,7 @@ private fun NowPlayingLyricsSwitcher(
 
                             !lyricsEnabled -> Unit
 
-                            // وقتی لیریک بازه، برای بستنش باید بیشتر پایین کشید
+                            // While the lyrics are open, closing them takes a longer downward drag
                             wasShowingLyrics -> settle(if (current > 0.65f) 1f else 0f)
 
                             else -> settle(if (current > 0.35f) 1f else 0f)
@@ -294,7 +295,7 @@ private fun NowPlayingLyricsSwitcher(
     }
 }
 
-// حالت لیریک: کاور کوچیک بالا چپ + لیریک karaoke بدون پسزمینه
+// Lyrics mode: a small cover at the top left plus karaoke lyrics with no panel behind them
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
 private fun NowPlayingLyricsMode(
@@ -303,7 +304,7 @@ private fun NowPlayingLyricsMode(
     coverModifier: Modifier = Modifier,
 ) {
     Column(modifier = Modifier.fillMaxSize()) {
-        // هدر: thumbnail + تایتل + خواننده
+        // Header: thumbnail + title + artist
         Row(
             modifier = Modifier
                 .fillMaxWidth()
@@ -340,7 +341,7 @@ private fun NowPlayingLyricsMode(
             }
         }
         Spacer(modifier = Modifier.height(8.dp))
-        // لیریک بدون پنل — مستقیم روی پسزمینه، با fade لبهها
+        // Lyrics without a panel — drawn straight onto the background, with faded edges
         val base = MaterialTheme.typography.titleLarge.copy(
             fontWeight = FontWeight.Bold,
             lineHeight = 34.sp,
