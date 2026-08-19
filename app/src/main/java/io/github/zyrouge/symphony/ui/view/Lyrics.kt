@@ -92,7 +92,7 @@ fun LyricsView(context: ViewContext) {
                 val accent = rememberArtworkAccent(context, data.song)
 
                 Box(modifier = Modifier.fillMaxSize()) {
-                    // پیوستگی کامل با پلیر: همون پسزمینهی بلورشده
+                    // Seamless continuity with the player: the very same blurred background
                     NowPlayingDynamicBackground(context, song = data.song)
 
                     CompositionLocalProvider(
@@ -112,7 +112,7 @@ fun LyricsView(context: ViewContext) {
                                     .padding(contentPadding)
                                     .fillMaxSize(),
                             ) {
-                                // ناحیهی لیریک با fade گرادیانی لبهی بالا و پایین
+                                // The lyrics area, with a gradient fade along the top and bottom edges
                                 Box(
                                     modifier = Modifier
                                         .weight(1f)
@@ -158,9 +158,11 @@ fun LyricsView(context: ViewContext) {
 }
 
 /**
- * استایل karaoke اپل: همهی خطوط بزرگ و bold، خط فعال سفید کامل،
- * خطوط خوندهشده کمی محو، خطوط بعدی نیمهشفاف + بلور ملایم.
- * TextDirection.Content یعنی هر خط بر اساس زبان خودش راستچین/چپچین میشه.
+ * Apple-style karaoke look: every line is large and bold, the active line is pure white,
+ * already-sung lines are slightly dimmed, and upcoming lines are semi-transparent with a
+ * gentle blur.
+ * TextDirection.Content means each line is aligned right-to-left or left-to-right based on
+ * its own language.
  */
 @Composable
 private fun karaokeLyricsStyle(): TimedContentTextStyle {
@@ -184,7 +186,7 @@ private fun LyricsHeader(context: ViewContext, data: NowPlayingData) {
     var visible by remember { mutableStateOf(false) }
     LaunchedEffect(Unit) { visible = true }
 
-    // ترنزیشن ورود: هدر (کاور کوچیک) از بالا میاد داخل
+    // Entry transition: the header (the small cover) slides in from the top
     AnimatedVisibility(
         visible = visible,
         enter = fadeIn(tween(350)) + slideInVertically(
