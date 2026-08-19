@@ -20,6 +20,7 @@ import kotlinx.coroutines.sync.withPermit
 import java.io.File
 import java.io.FileInputStream
 import java.io.FileOutputStream
+import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicLong
 
 /**
@@ -28,6 +29,10 @@ import java.util.concurrent.atomic.AtomicLong
  * 2. If the server has not prepared the file yet, the download endpoint answers 504
  *    while preparing; we poll every 3 seconds. Downloads resume via HTTP Range.
  * Finished files are saved to Music/<folder> via MediaStore.
+ *
+ * @param onDownloadCompleted invoked once the queue goes idle after at least one
+ *   successful save, so the host can re-index the local library without the user
+ *   having to trigger a manual re-scan.
  */
 class SpotizerDownloadManager(
     private val context: Context,
@@ -35,6 +40,7 @@ class SpotizerDownloadManager(
     private val client: SpotizerClient,
     private val isTrackOnDevice: (SpotizerTrack) -> Boolean,
     private val resolveUserId: suspend () -> String?,
+    private val onDownloadCompleted: (() -> Unit)? = null,
 ) {
     enum class Phase {
         Queued,
@@ -58,6 +64,7 @@ class SpotizerDownloadManager(
         val totalBytes: Long = 0L,
         val wasCachedOnServer: Boolean = false,
         val error: String? = null,
+        val savedFileName: String? = null,
     ) {
         val isActive: Boolean
             get() = phase == Phase.Queued ||
@@ -73,6 +80,7 @@ class SpotizerDownloadManager(
     private val jobs = mutableMapOf<Long, Job>()
     private var semaphore = Semaphore(settings.maxConcurrentDownloads.value)
     private var semaphoreSize = settings.maxConcurrentDownloads.value
+    private val libraryRefreshPending = AtomicBoolean(false)
 
     private val _items = MutableStateFlow<List<Item>>(emptyList())
     val items: StateFlow<List<Item>> = _items
@@ -138,6 +146,29 @@ class SpotizerDownloadManager(
     }
 
     private fun currentItem(itemId: Long) = _items.value.find { it.id == itemId }
+
+    /**
+     * Schedules a single library refresh for the current download burst. Waits for
+     * the queue to drain first so a 20 track album triggers one re-index, not 20.
+     */
+    private fun scheduleLibraryRefresh() {
+        val callback = onDownloadCompleted ?: return
+        if (!libraryRefreshPending.compareAndSet(false, true)) {
+            return
+        }
+        scope.launch {
+            try {
+                while (_items.value.any { it.isActive }) {
+                    delay(1000)
+                }
+                // Give MediaStore a moment to publish the freshly written files.
+                delay(750)
+                runCatching { callback() }
+            } finally {
+                libraryRefreshPending.set(false)
+            }
+        }
+    }
 
     private fun refreshSemaphore() {
         val wanted = settings.maxConcurrentDownloads.value
@@ -365,7 +396,8 @@ class SpotizerDownloadManager(
                 }
             }
             tempFile.delete()
-            update(itemId) { it.copy(phase = Phase.Done) }
+            update(itemId) { it.copy(phase = Phase.Done, savedFileName = fileName) }
+            scheduleLibraryRefresh()
         } catch (failure: Exception) {
             update(itemId) {
                 it.copy(phase = Phase.Failed, error = failure.message ?: "Could not save file")

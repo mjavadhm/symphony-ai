@@ -49,6 +49,11 @@ class Symphony(application: Application) : AndroidViewModel(application), Sympho
                         (track.durationMs <= 0L || abs(song.duration - track.durationMs) <= 3000L)
             }
         },
+        // Freshly downloaded tracks should appear in the library without the user
+        // having to trigger a manual re-scan.
+        onDownloadCompleted = {
+            groove.fetch(Groove.FetchOptions())
+        },
     )
 
     var t by mutableStateOf(translator.getCurrentTranslation())
