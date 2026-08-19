@@ -374,4 +374,3 @@ fun NowPlayingExtraOptions(
         }
     }
 }
-}
