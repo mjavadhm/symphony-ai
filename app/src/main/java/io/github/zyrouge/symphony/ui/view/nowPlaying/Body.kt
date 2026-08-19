@@ -1,14 +1,12 @@
 package io.github.zyrouge.symphony.ui.view.nowPlaying
 
-import androidx.compose.animation.AnimatedContent
-import androidx.compose.animation.ExperimentalSharedTransitionApi
-import androidx.compose.animation.SharedTransitionLayout
-import androidx.compose.animation.core.tween
-import androidx.compose.animation.fadeIn
-import androidx.compose.animation.fadeOut
-import androidx.compose.animation.togetherWith
+import android.view.HapticFeedbackConstants
+import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.spring
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.basicMarquee
+import androidx.compose.foundation.gestures.detectVerticalDragGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
@@ -29,9 +27,13 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -41,7 +43,10 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.CompositingStrategy
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextDirection
 import androidx.compose.ui.text.style.TextOverflow
@@ -60,10 +65,22 @@ import io.github.zyrouge.symphony.ui.view.NowPlayingDefaults
 import io.github.zyrouge.symphony.ui.view.NowPlayingLyricsLayout
 import io.github.zyrouge.symphony.ui.view.NowPlayingStates
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.launch
 
 internal val defaultHorizontalPadding = 20.dp
 
-@OptIn(ExperimentalSharedTransitionApi::class)
+// حرکت نرم بین کاور و لیریک — با رها کردن انگشت به نزدیکترین حالت میچسبه
+private val lyricsRevealSpec = spring<Float>(
+    dampingRatio = 0.85f,
+    stiffness = Spring.StiffnessMediumLow,
+)
+
+// درگ عمودی باید حداقل این نسبت از ارتفاع باشه تا صفحه بسته بشه
+private const val DISMISS_DRAG_FRACTION = 0.15f
+
+// مسافتی که برای رفتن از کاور به لیریک لازمه (نسبت به ارتفاع کانتینر)
+private const val LYRICS_DRAG_FRACTION = 0.55f
+
 @Composable
 fun NowPlayingBody(context: ViewContext, data: NowPlayingData) {
     val states = remember {
@@ -99,49 +116,15 @@ fun NowPlayingBody(context: ViewContext, data: NowPlayingData) {
                         Box(modifier = Modifier.padding(contentPadding)) {
                             when (orientation) {
                                 ScreenOrientation.PORTRAIT -> Column(modifier = Modifier.fillMaxSize()) {
-                                    SharedTransitionLayout(
+                                    NowPlayingLyricsSwitcher(
+                                        context,
+                                        data = data,
+                                        states = states,
+                                        orientation = orientation,
                                         modifier = Modifier
                                             .weight(1f)
                                             .fillMaxWidth(),
-                                    ) {
-                                        AnimatedContent(
-                                            label = "now-playing-lyrics-mode",
-                                            targetState = showLyrics,
-                                            transitionSpec = {
-                                                fadeIn(tween(400))
-                                                    .togetherWith(fadeOut(tween(250)))
-                                            },
-                                        ) { targetShowLyrics ->
-                                            // کاور بین دو حالت به صورت پیوسته morph میشه
-                                            val coverSharedModifier = Modifier.sharedElement(
-                                                rememberSharedContentState(key = "now-playing-cover"),
-                                                animatedVisibilityScope = this@AnimatedContent,
-                                            )
-
-                                            when {
-                                                targetShowLyrics -> NowPlayingLyricsMode(
-                                                    context,
-                                                    data,
-                                                    coverModifier = coverSharedModifier,
-                                                )
-
-                                                else -> Box(
-                                                    modifier = Modifier
-                                                        .fillMaxSize()
-                                                        .padding(bottom = 20.dp),
-                                                    contentAlignment = Alignment.Center,
-                                                ) {
-                                                    NowPlayingBodyCover(
-                                                        context,
-                                                        data,
-                                                        states,
-                                                        orientation,
-                                                        coverModifier = coverSharedModifier,
-                                                    )
-                                                }
-                                            }
-                                        }
-                                    }
+                                    )
                                     Column {
                                         NowPlayingBodyContent(context, data, showSongInfo = !showLyrics)
                                         NowPlayingBodyBottomBar(context, data, states)
@@ -174,6 +157,138 @@ fun NowPlayingBody(context: ViewContext, data: NowPlayingData) {
                         }
                     }
                 )
+            }
+        }
+    }
+}
+
+/**
+ * کاور و لیریک روی هم چیده میشن و با یک progress بین ۰ و ۱ کنترل میشن:
+ * - کشیدن کاور به سمت بالا → لیریک میاد بالا
+ * - کشیدن لیریک به سمت پایین → لیریک بسته میشه
+ * - کشیدن کاور به سمت پایین (وقتی لیریک بسته است) → صفحه بسته میشه
+ *
+ * چون progress مستقیم با انگشت جابهجا میشه، حرکت پیوسته و قابل برگشته و
+ * با رها کردن انگشت با spring به نزدیکترین حالت میچسبه.
+ */
+@Composable
+private fun NowPlayingLyricsSwitcher(
+    context: ViewContext,
+    data: NowPlayingData,
+    states: NowPlayingStates,
+    orientation: ScreenOrientation,
+    modifier: Modifier = Modifier,
+) {
+    val view = LocalView.current
+    val coroutineScope = rememberCoroutineScope()
+    val showLyrics by states.showLyrics.collectAsState()
+    val lyricsEnabled = data.lyricsLayout == NowPlayingLyricsLayout.ReplaceArtwork
+    val progress = remember { Animatable(if (states.showLyrics.value) 1f else 0f) }
+    var containerHeightPx by remember { mutableStateOf(1f) }
+
+    // همگامسازی با دکمهی لیریک در نوار پایین
+    LaunchedEffect(showLyrics) {
+        val target = if (showLyrics) 1f else 0f
+        if (progress.value != target) {
+            progress.animateTo(target, animationSpec = lyricsRevealSpec)
+        }
+    }
+
+    val settle: (Float) -> Unit = { target ->
+        coroutineScope.launch {
+            progress.animateTo(target, animationSpec = lyricsRevealSpec)
+        }
+        val nShowLyrics = target > 0.5f
+        if (states.showLyrics.value != nShowLyrics) {
+            view.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
+            states.showLyrics.value = nShowLyrics
+            NowPlayingDefaults.showLyrics = nShowLyrics
+        }
+    }
+
+    val revealProgress = progress.value
+
+    Box(
+        modifier = modifier
+            .onSizeChanged {
+                containerHeightPx = it.height.toFloat().coerceAtLeast(1f)
+            }
+            .pointerInput(lyricsEnabled) {
+                var totalDrag = 0f
+                detectVerticalDragGestures(
+                    onDragStart = {
+                        totalDrag = 0f
+                    },
+                    onVerticalDrag = { _, dragAmount ->
+                        totalDrag += dragAmount
+                        if (lyricsEnabled) {
+                            coroutineScope.launch {
+                                val next = progress.value -
+                                        (dragAmount / (containerHeightPx * LYRICS_DRAG_FRACTION))
+                                progress.snapTo(next.coerceIn(0f, 1f))
+                            }
+                        }
+                    },
+                    onDragEnd = {
+                        val current = progress.value
+                        val wasShowingLyrics = states.showLyrics.value
+                        when {
+                            // کشیدن کاور به پایین → بستن صفحهی در حال پخش
+                            !wasShowingLyrics && current <= 0.02f &&
+                                    totalDrag > containerHeightPx * DISMISS_DRAG_FRACTION -> {
+                                view.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
+                                context.navController.popBackStack()
+                            }
+
+                            !lyricsEnabled -> Unit
+
+                            // وقتی لیریک بازه، برای بستنش باید بیشتر پایین کشید
+                            wasShowingLyrics -> settle(if (current > 0.65f) 1f else 0f)
+
+                            else -> settle(if (current > 0.35f) 1f else 0f)
+                        }
+                    },
+                    onDragCancel = {
+                        if (lyricsEnabled) {
+                            settle(if (states.showLyrics.value) 1f else 0f)
+                        }
+                    },
+                )
+            },
+    ) {
+        if (revealProgress < 0.999f) {
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(bottom = 20.dp)
+                    .graphicsLayer {
+                        alpha = 1f - revealProgress
+                        translationY = -revealProgress * size.height * 0.12f
+                        val coverScale = 1f - (0.12f * revealProgress)
+                        scaleX = coverScale
+                        scaleY = coverScale
+                    },
+                contentAlignment = Alignment.Center,
+            ) {
+                NowPlayingBodyCover(
+                    context,
+                    data,
+                    states,
+                    orientation,
+                    verticalSwipeToDismiss = false,
+                )
+            }
+        }
+        if (revealProgress > 0.001f) {
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .graphicsLayer {
+                        alpha = revealProgress
+                        translationY = (1f - revealProgress) * size.height * 0.1f
+                    },
+            ) {
+                NowPlayingLyricsMode(context, data)
             }
         }
     }

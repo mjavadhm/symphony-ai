@@ -49,6 +49,7 @@ import coil.compose.AsyncImage
 import io.github.zyrouge.symphony.ui.components.KeepScreenAwake
 import io.github.zyrouge.symphony.ui.components.LyricsText
 import io.github.zyrouge.symphony.ui.components.TimedContentTextStyle
+import io.github.zyrouge.symphony.ui.components.horizontalSwipeable
 import io.github.zyrouge.symphony.ui.components.swipeable
 import io.github.zyrouge.symphony.ui.helpers.FadeTransition
 import io.github.zyrouge.symphony.ui.helpers.ScreenOrientation
@@ -66,6 +67,11 @@ fun NowPlayingBodyCover(
     states: NowPlayingStates,
     orientation: ScreenOrientation,
     coverModifier: Modifier = Modifier,
+    /**
+     * When false, vertical drags are left to the parent (portrait now playing
+     * uses them to reveal/hide the lyrics and to close the screen).
+     */
+    verticalSwipeToDismiss: Boolean = true,
 ) {
     val showLyrics by states.showLyrics.collectAsState()
 
@@ -87,6 +93,7 @@ fun NowPlayingBodyCover(
                     context,
                     data = data,
                     modifier = coverModifier,
+                    verticalSwipeToDismiss = verticalSwipeToDismiss,
                 )
             }
         }
@@ -134,6 +141,7 @@ private fun NowPlayingBodyCoverArtwork(
     context: ViewContext,
     data: NowPlayingData,
     modifier: Modifier = Modifier,
+    verticalSwipeToDismiss: Boolean = true,
 ) {
     BoxWithConstraints {
         val view = LocalView.current
@@ -147,6 +155,37 @@ private fun NowPlayingBodyCoverArtwork(
             ),
             label = "now-playing-cover-play-scale",
         )
+
+        val jumpToNext: () -> Unit = {
+            if (context.symphony.radio.canJumpToNext()) {
+                view.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
+                context.symphony.radio.jumpToNext()
+            }
+        }
+        val jumpToPrevious: () -> Unit = {
+            if (context.symphony.radio.canJumpToPrevious()) {
+                view.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
+                context.symphony.radio.jumpToPrevious()
+            }
+        }
+        val swipeModifier = when {
+            verticalSwipeToDismiss -> Modifier.swipeable(
+                minimumDragAmount = 100f,
+                onSwipeLeft = jumpToNext,
+                onSwipeRight = jumpToPrevious,
+                onSwipeDown = {
+                    view.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
+                    context.navController.popBackStack()
+                },
+            )
+
+            // vertical drags belong to the parent, which reveals the lyrics
+            else -> Modifier.horizontalSwipeable(
+                minimumDragAmount = 100f,
+                onSwipeLeft = jumpToNext,
+                onSwipeRight = jumpToPrevious,
+            )
+        }
 
         AnimatedContent(
             label = "now-playing-body-cover-artwork",
@@ -183,25 +222,7 @@ private fun NowPlayingBodyCoverArtwork(
                             spotColor = Color.Black.copy(alpha = 0.7f),
                         )
                         .clip(RoundedCornerShape(coverCornerRadius))
-                        .swipeable(
-                            minimumDragAmount = 100f,
-                            onSwipeLeft = {
-                                if (context.symphony.radio.canJumpToNext()) {
-                                    view.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
-                                    context.symphony.radio.jumpToNext()
-                                }
-                            },
-                            onSwipeRight = {
-                                if (context.symphony.radio.canJumpToPrevious()) {
-                                    view.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
-                                    context.symphony.radio.jumpToPrevious()
-                                }
-                            },
-                            onSwipeDown = {
-                                view.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
-                                context.navController.popBackStack()
-                            },
-                        )
+                        .then(swipeModifier)
                         .pointerInput(Unit) {
                             detectTapGestures { _ ->
                                 context.symphony.groove.album
