@@ -14,8 +14,8 @@ import io.github.zyrouge.symphony.ui.helpers.ViewContext
 import io.github.zyrouge.symphony.ui.view.settings.IndexSongsSettingsRoute
 
 /**
- * Banner کوچک سراسری: فقط وقتی ایندکس فعاله دیده میشه.
- * با tap کاربر رو میبره به صفحه Manage AI Index.
+ * Small app-wide banner, only shown while indexing is running.
+ * Tapping it takes the user to the Manage AI Index screen.
  */
 @Composable
 fun IndexingStatusBanner(context: ViewContext, modifier: Modifier = Modifier) {
