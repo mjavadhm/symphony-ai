@@ -136,7 +136,7 @@ fun DiscoverChatView(context: ViewContext, route: DiscoverChatRoute) {
         chatStore.touchSession(sid, System.currentTimeMillis())
     }
 
-    // بازیابی چت قبلی و/یا کانتکست ویرایش میکس
+    // Restore the previous chat and/or the mix-editing context
     LaunchedEffect(Unit) {
         if (route.sessionId >= 0) {
             sessionId = route.sessionId
