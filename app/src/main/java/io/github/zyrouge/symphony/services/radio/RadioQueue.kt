@@ -42,9 +42,9 @@ class RadioQueue(private val symphony: Symphony) {
 
     fun cycleShuffleMode() {
         when {
-            !currentShuffleMode -> setShuffleMode(true)   // خاموش → شافل معمولی
-            !smartShuffleMode.value -> enableSmartShuffle() // معمولی → هوشمند
-            else -> setShuffleMode(false)                  // هوشمند → خاموش
+            !currentShuffleMode -> setShuffleMode(true)   // off → normal shuffle
+            !smartShuffleMode.value -> enableSmartShuffle() // normal → smart
+            else -> setShuffleMode(false)                  // smart → off
         }
     }
 
