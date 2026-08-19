@@ -144,7 +144,7 @@ fun TimedContentText(
                     else -> style.inactive
                 },
             )
-            // بلور فقط برای لیریک syncشده و خطوط غیر از خط فعال
+            // Blur only applies to synced lyrics, and only to lines other than the active one
             val lineBlur by animateDpAsState(
                 targetValue = when {
                     content.isSynced && !active -> style.inactiveBlur
