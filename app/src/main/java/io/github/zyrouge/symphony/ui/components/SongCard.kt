@@ -19,6 +19,7 @@ import androidx.compose.material.icons.automirrored.filled.PlaylistAdd
 import androidx.compose.material.icons.automirrored.filled.PlaylistPlay
 import androidx.compose.material.icons.filled.Album
 import androidx.compose.material.icons.filled.AutoAwesome
+import androidx.compose.material.icons.filled.DeleteForever
 import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.MoreVert
@@ -232,6 +233,7 @@ fun SongDropdownMenu(
     val coroutineScope = rememberCoroutineScope()
     var showInfoDialog by remember { mutableStateOf(false) }
     var showAddToPlaylistDialog by remember { mutableStateOf(false) }
+    var showDeleteFromDeviceDialog by remember { mutableStateOf(false) }
     var isCreatingAiPlaylist by remember { mutableStateOf(false) }
 
     val isSemanticSearchEnabled by context.symphony.settings.isSemanticSearchEnabled.flow.collectAsState()
@@ -503,6 +505,25 @@ fun SongDropdownMenu(
                 showInfoDialog = true
             }
         )
+        DropdownMenuItem(
+            leadingIcon = {
+                Icon(
+                    Icons.Filled.DeleteForever,
+                    null,
+                    tint = MaterialTheme.colorScheme.error,
+                )
+            },
+            text = {
+                Text(
+                    "حذف دائمی از گوشی",
+                    color = MaterialTheme.colorScheme.error,
+                )
+            },
+            onClick = {
+                onDismissRequest()
+                showDeleteFromDeviceDialog = true
+            }
+        )
         trailingContent?.invoke(this, onDismissRequest)
     }
 
@@ -522,6 +543,16 @@ fun SongDropdownMenu(
             songIds = listOf(song.id),
             onDismissRequest = {
                 showAddToPlaylistDialog = false
+            }
+        )
+    }
+
+    if (showDeleteFromDeviceDialog) {
+        DeleteSongFromDeviceDialog(
+            context,
+            song = song,
+            onDismissRequest = {
+                showDeleteFromDeviceDialog = false
             }
         )
     }

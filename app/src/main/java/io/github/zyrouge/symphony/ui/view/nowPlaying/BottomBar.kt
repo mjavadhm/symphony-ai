@@ -19,6 +19,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.Sort
+import androidx.compose.material.icons.filled.DeleteForever
 import androidx.compose.material.icons.filled.MoreHoriz
 import androidx.compose.material.icons.automirrored.outlined.Article
 import androidx.compose.material.icons.filled.GraphicEq
@@ -47,6 +48,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import io.github.zyrouge.symphony.ui.components.DeleteSongFromDeviceDialog
 import io.github.zyrouge.symphony.ui.components.LocalNowPlayingAccent
 import io.github.zyrouge.symphony.ui.helpers.ViewContext
 import io.github.zyrouge.symphony.ui.view.LyricsViewRoute
@@ -97,7 +99,7 @@ fun NowPlayingBodyBottomBar(
                         .copy(fontWeight = FontWeight.Bold),
                 )
             }
-            // تنظیمات پخش — وسط
+            // تنطیمات پخش — وسط
             IconButton(
                 modifier = Modifier.background(
                     Color.White.copy(alpha = 0.12f),
@@ -168,6 +170,7 @@ fun NowPlayingExtraOptions(
     var showSleepTimerDialog by remember { mutableStateOf(false) }
     var showSpeedDialog by remember { mutableStateOf(false) }
     var showPitchDialog by remember { mutableStateOf(false) }
+    var showDeleteFromDeviceDialog by remember { mutableStateOf(false) }
 
     data.run {
         if (visible) {
@@ -292,6 +295,28 @@ fun NowPlayingExtraOptions(
                             Text("x${data.currentPitch}")
                         },
                     )
+                    ListItem(
+                        modifier = Modifier.clickable {
+                            closeBottomSheet()
+                            showDeleteFromDeviceDialog = true
+                        },
+                        leadingContent = {
+                            Icon(
+                                Icons.Filled.DeleteForever,
+                                null,
+                                tint = MaterialTheme.colorScheme.error,
+                            )
+                        },
+                        headlineContent = {
+                            Text(
+                                "حذف دائمی از گوشی",
+                                color = MaterialTheme.colorScheme.error,
+                            )
+                        },
+                        supportingContent = {
+                            Text("فایل این آهنگ برای همیشه پاک می‌شود")
+                        },
+                    )
                     Spacer(modifier = Modifier.height(8.dp))
                 }
             }
@@ -334,6 +359,16 @@ fun NowPlayingExtraOptions(
                 persistedPitch = data.persistedPitch,
                 onDismissRequest = {
                     showPitchDialog = false
+                }
+            )
+        }
+
+        if (showDeleteFromDeviceDialog) {
+            DeleteSongFromDeviceDialog(
+                context,
+                song = data.song,
+                onDismissRequest = {
+                    showDeleteFromDeviceDialog = false
                 }
             )
         }

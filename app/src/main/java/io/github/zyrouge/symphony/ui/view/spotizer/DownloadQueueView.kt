@@ -306,10 +306,7 @@ fun DownloadQueueView(context: ViewContext) {
                     items(downloadedSongs.size) { index ->
                         val song = downloadedSongs[index]
                         SongCard(context, song) {
-                            context.symphony.radio.shorty.playQueue(
-                                downloadedSongs.map { it.id },
-                                index,
-                            )
+                            context.symphony.radio.shorty.playQueue(song.id)
                         }
                     }
                 }
