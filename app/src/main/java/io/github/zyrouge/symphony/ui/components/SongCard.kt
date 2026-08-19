@@ -515,7 +515,7 @@ fun SongDropdownMenu(
             },
             text = {
                 Text(
-                    "حذف دائمی از گوشی",
+                    "Delete from device",
                     color = MaterialTheme.colorScheme.error,
                 )
             },

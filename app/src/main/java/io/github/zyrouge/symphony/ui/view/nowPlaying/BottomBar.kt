@@ -309,12 +309,12 @@ fun NowPlayingExtraOptions(
                         },
                         headlineContent = {
                             Text(
-                                "حذف دائمی از گوشی",
+                                "Delete from device",
                                 color = MaterialTheme.colorScheme.error,
                             )
                         },
                         supportingContent = {
-                            Text("فایل این آهنگ برای همیشه پاک می‌شود")
+                            Text("Permanently removes the file")
                         },
                     )
                     Spacer(modifier = Modifier.height(8.dp))
@@ -373,4 +373,5 @@ fun NowPlayingExtraOptions(
             )
         }
     }
+}
 }

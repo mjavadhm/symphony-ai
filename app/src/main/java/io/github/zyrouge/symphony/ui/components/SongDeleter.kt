@@ -93,12 +93,12 @@ private fun deleteSongFile(context: ViewContext, song: Song): DeleteOutcome {
 
     // 2. MediaStore delete, which may require an explicit user confirmation.
     val mediaUri = runCatching { findMediaStoreUri(activity, song) }.getOrNull()
-        ?: return DeleteOutcome.Failed("فایل این آهنگ در حافطه پیدا نشد")
+        ?: return DeleteOutcome.Failed("file not found on this device")
 
     return try {
         when {
             resolver.delete(mediaUri, null, null) > 0 -> DeleteOutcome.Deleted
-            else -> DeleteOutcome.Failed("فایل این آهنگ در حافطه پیدا نشد")
+            else -> DeleteOutcome.Failed("file not found on this device")
         }
     } catch (err: SecurityException) {
         val sender = when {
@@ -152,10 +152,10 @@ fun DeleteSongFromDeviceDialog(
         when (result.resultCode) {
             Activity.RESULT_OK -> {
                 reindexAfterDelete(context)
-                toast(song.title + " از گوشی حذف شد")
+                toast("Deleted " + song.title)
             }
 
-            else -> toast("حذف انجام نشد")
+            else -> toast("Nothing was deleted")
         }
         onDismissRequest()
     }
@@ -166,11 +166,11 @@ fun DeleteSongFromDeviceDialog(
                 onDismissRequest()
             }
         },
-        title = { Text("حذف دائمی از گوشی") },
+        title = { Text("Delete from device") },
         text = {
             Text(
-                "«" + song.title + "» از حافطه‌ی گوشی پاک می‌شود و این کار " +
-                        "قابل بازگشت نیست."
+                "\"" + song.title + "\" will be permanently removed from this device. " +
+                        "This cannot be undone."
             )
         },
         confirmButton = {
@@ -181,7 +181,7 @@ fun DeleteSongFromDeviceDialog(
                     when (val outcome = deleteSongFile(context, song)) {
                         is DeleteOutcome.Deleted -> {
                             reindexAfterDelete(context)
-                            toast(song.title + " از گوشی حذف شد")
+                            toast("Deleted " + song.title)
                             isDeleting = false
                             onDismissRequest()
                         }
@@ -193,21 +193,21 @@ fun DeleteSongFromDeviceDialog(
                                 )
                             }.onFailure { failure ->
                                 Logger.error(LOG_TAG, "launching delete request failed", failure)
-                                toast("حذف انجام نشد")
+                                toast("Nothing was deleted")
                                 isDeleting = false
                                 onDismissRequest()
                             }
                         }
 
                         is DeleteOutcome.Failed -> {
-                            toast("حذف نشد: " + outcome.message)
+                            toast("Couldn't delete: " + outcome.message)
                             isDeleting = false
                             onDismissRequest()
                         }
                     }
                 },
             ) {
-                Text("حذف دائمی")
+                Text("Delete")
             }
         },
         dismissButton = {
@@ -215,7 +215,7 @@ fun DeleteSongFromDeviceDialog(
                 enabled = !isDeleting,
                 onClick = onDismissRequest,
             ) {
-                Text("انصراف")
+                Text("Cancel")
             }
         },
     )
