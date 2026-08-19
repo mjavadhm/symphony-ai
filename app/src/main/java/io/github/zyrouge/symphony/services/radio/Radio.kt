@@ -326,7 +326,7 @@ class Radio(private val symphony: Symphony) : Symphony.Hooks {
             player = null
             p.setOnPlaybackPositionListener {}
             
-            // Log playback history (از ۵ ثانیه به بالا — skip ها هم ثبت میشن)
+            // Log playback history (only from 5 seconds up — skips get recorded too)
             if (p.activelyPlayedMs >= 5_000) {
                 val playedMs = p.activelyPlayedMs
                 val song = symphony.groove.song.get(p.id)
@@ -381,7 +381,7 @@ class Radio(private val symphony: Symphony) : Symphony.Hooks {
             queue.currentSongIndex = -1
             return
         }
-        // Autoplay: صف تموم شده → به جای توقف، با آهنگهای مشابه ادامه بده
+        // Autoplay: the queue ran out → instead of stopping, keep going with similar songs
         if (source == SongFinishSource.Finish &&
             queue.currentLoopMode == RadioQueue.LoopMode.Autoplay &&
             !queue.hasSongAt(queue.currentSongIndex + 1) &&
@@ -412,7 +412,7 @@ class Radio(private val symphony: Symphony) : Symphony.Hooks {
                 emptyList()
             }
             if (songIds.isEmpty()) {
-                // موتور آماده نیست → همون رفتار قبلی (برگرد اول صف و متوقف شو)
+                // The engine isn't ready → keep the old behavior (go back to the start of the queue and stop)
                 if (!hadPlayer) {
                     play(PlayOptions(index = 0, autostart = false))
                 }
