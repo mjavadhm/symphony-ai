@@ -234,8 +234,8 @@ class SemanticSearchEngine(val symphony: Symphony) : Symphony.Hooks {
 
                 val decoder = io.github.zyrouge.symphony.services.search.ml.AudioDecoder(symphony.applicationContext)
 
-                // ✅ هر چانک: decode → mel → embed → دور انداختن PCM
-                // فقط امبدینگهای ۵۱۲تایی نگه داشته میشن (ناچیز)
+                // ✅ Per chunk: decode → mel → embed → discard the PCM
+                // Only the 512-dim embeddings are kept (negligible memory)
                 val chunkEmbeddings = mutableListOf<FloatArray>()
                 val count = decoder.streamChunks(song.uri) { chunk ->
                     val melSpec = melExtractor.extract(chunk.floatArray)
@@ -258,9 +258,9 @@ class SemanticSearchEngine(val symphony: Symphony) : Symphony.Hooks {
                 repository!!.invalidateCache()
                 Result.success(Unit)
             } catch (e: kotlinx.coroutines.CancellationException) {
-                throw e // کنسل شدن باید عبور کنه، وگرنه Cancel دکمه خراب میشه
+                throw e // Cancellation must propagate, otherwise the Cancel button stops working
             } catch (e: Throwable) {
-                // ✅ Throwable به جای Exception → OutOfMemoryError هم گرفته میشه
+                // ✅ Throwable instead of Exception → OutOfMemoryError is caught too
                 e.printStackTrace()
                 Result.failure(Exception(e))
             }
@@ -410,7 +410,7 @@ class SemanticSearchEngine(val symphony: Symphony) : Symphony.Hooks {
         }
     }
 
-    // Prompt ensemble: میانگین امبدینگ چند پارافریز هم‌معنی از یک کوئری
+    // Prompt ensemble: average the embeddings of a few equivalent paraphrases of the same query
     private fun buildQueryEmbedding(query: String): FloatArray {
         val q = query.trim()
         val templates = listOf(q, "a $q song", "$q music")
@@ -422,7 +422,7 @@ class SemanticSearchEngine(val symphony: Symphony) : Symphony.Hooks {
                 sum[i] += emb[i]
             }
         }
-        // بعد از میانگین حتماً دوباره normalize
+        // Always re-normalize after averaging
         var norm = 0f
         for (v in sum) norm += v * v
         norm = kotlin.math.sqrt(norm)
