@@ -19,9 +19,9 @@ data class ChatMessage(
     // "user" | "bot" | "results"
     val kind: String,
     val text: String,
-    // پرامپتهای CLAP، خطبهخط (فقط برای kind=results)
+    // CLAP prompts, one per line (only for kind=results)
     @ColumnInfo(defaultValue = "") val prompts: String = "",
-    // songId ها، خطبهخط (فقط برای kind=results)
+    // songIds, one per line (only for kind=results)
     @ColumnInfo(defaultValue = "") val songIds: String = "",
     val createdAt: Long = System.currentTimeMillis(),
 )
