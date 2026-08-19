@@ -3,22 +3,22 @@ package io.github.zyrouge.symphony.services.search.ml
 import kotlin.math.*
 
 /**
- * استخراج‌کننده Mel-Spectrogram — پیاده‌سازی خالص کاتلین (بدون C++/JNI).
+ * Mel-Spectrogram extractor — a pure Kotlin implementation (no C++/JNI).
  *
- * پارامترها دقیقاً منطبق با preprocessor_config.json مدل CLAP هستند:
+ * The parameters match the CLAP model's preprocessor_config.json exactly:
  *   - sampleRate = 48000
  *   - nFft = 1024
  *   - hopLength = 480
  *   - nMels = 64
  *   - fMin = 50 Hz
  *   - fMax = 14000 Hz
- *   - maxFrames = 1001 (معادل ۱۰ ثانیه صدا)
+ *   - maxFrames = 1001 (equivalent to 10 seconds of audio)
  *
- * خروجی: FloatArray با ابعاد [1 × 1 × 1001 × 64] (فلت‌شده) آماده تغذیه به ONNX.
+ * Output: a FloatArray shaped [1 x 1 x 1001 x 64] (flattened), ready to feed into ONNX.
  */
 class MelSpectrogramExtractor {
 
-    // --- پارامترهای DSP منطبق با مدل CLAP ---
+    // --- DSP parameters matching the CLAP model ---
     private val sampleRate = 48000
     private val nFft = 1024
     private val hopLength = 480
@@ -27,42 +27,42 @@ class MelSpectrogramExtractor {
     private val fMax = 14000.0
     private val maxFrames = 1001
 
-    // ماتریس Mel Filterbank — یک بار محاسبه شده و کش می‌شود
+    // Mel filterbank matrix — computed once and cached
     private val melFilterbank: Array<FloatArray> = buildMelFilterbank()
 
-    // پنجره Hann (Hanning Window) از پیش‌محاسبه‌شده
+    // Pre-computed Hann (Hanning) window
     private val hannWindow: FloatArray = FloatArray(nFft) { i ->
         (0.5 * (1 - cos(2.0 * PI * i / nFft))).toFloat()
     }
 
     /**
-     * تبدیل آرایه نمونه‌های صوتی خام (PCM float، مونو، 48kHz)
-     * به FloatArray با ابعاد فلت‌شده [1, 1, maxFrames, nMels].
+     * Converts raw audio samples (PCM float, mono, 48kHz) into a FloatArray
+     * flattened to [1, 1, maxFrames, nMels].
      *
-     * @param audioSamples نمونه‌های صوتی مونو با مقادیر بین [-1, 1]
-     * @return FloatArray آماده برای ClapModelRunner.getAudioEmbedding()
+     * @param audioSamples mono audio samples with values between [-1, 1]
+     * @return a FloatArray ready for ClapModelRunner.getAudioEmbedding()
      */
     fun extract(audioSamples: FloatArray): FloatArray {
-        // --- مرحله ۱: اعمال STFT ---
+        // --- Step 1: apply the STFT ---
         val spectrogram = stft(audioSamples)
 
-        // --- مرحله ۲: محاسبه Power Spectrogram (مربع مقدار مطلق) ---
+        // --- Step 2: compute the power spectrogram (squared magnitude) ---
         val powerSpec = Array(spectrogram.size) { frame ->
             FloatArray(spectrogram[frame].size) { bin ->
-                spectrogram[frame][bin] // قبلاً power شده در stft
+                spectrogram[frame][bin] // already turned into power inside stft
             }
         }
 
-        // --- مرحله ۳: ضرب در ماتریس Mel Filterbank ---
+        // --- Step 3: multiply by the mel filterbank matrix ---
         val melSpec = applyMelFilterbank(powerSpec)
 
-        // --- مرحله ۴: تبدیل به مقیاس لگاریتمی (Log-Mel) ---
+        // --- Step 4: convert to a logarithmic scale (log-mel) ---
         val logMelSpec = logScale(melSpec)
 
-        // --- مرحله ۵: Padding/Truncation به 1001 فریم ---
+        // --- Step 5: pad/truncate to 1001 frames ---
         val paddedMel = padOrTruncate(logMelSpec)
 
-        // --- مرحله ۶: فلت کردن به آرایه یک‌بعدی [1 × 1 × 1001 × 64] ---
+        // --- Step 6: flatten into a 1D array [1 x 1 x 1001 x 64] ---
         val output = FloatArray(1 * 1 * maxFrames * nMels)
         for (t in 0 until maxFrames) {
             for (m in 0 until nMels) {
@@ -74,7 +74,7 @@ class MelSpectrogramExtractor {
 
     /**
      * Short-Time Fourier Transform (STFT)
-     * خروجی: آرایه‌ای از فریم‌ها، هر فریم شامل (nFft/2 + 1) مقدار Power.
+     * Output: an array of frames, each frame holding (nFft/2 + 1) power values.
      */
     private fun stft(samples: FloatArray): Array<FloatArray> {
         val numBins = nFft / 2 + 1
@@ -86,7 +86,7 @@ class MelSpectrogramExtractor {
         return Array(numFrames) { frameIdx ->
             val offset = frameIdx * hopLength
 
-            // استخراج فریم و اعمال پنجره Hann
+            // Take the frame and apply the Hann window
             val realPart = FloatArray(nFft)
             val imagPart = FloatArray(nFft)
             for (i in 0 until nFft) {
@@ -101,7 +101,7 @@ class MelSpectrogramExtractor {
             // FFT (Cooley-Tukey)
             fft(realPart, imagPart)
 
-            // محاسبه Power Spectrum = real^2 + imag^2
+            // Power spectrum = real^2 + imag^2
             FloatArray(numBins) { k ->
                 realPart[k] * realPart[k] + imagPart[k] * imagPart[k]
             }
@@ -156,7 +156,7 @@ class MelSpectrogramExtractor {
     }
 
     /**
-     * ضرب Power Spectrogram در ماتریس Mel Filterbank.
+     * Multiplies the power spectrogram by the mel filterbank matrix.
      */
     private fun applyMelFilterbank(powerSpec: Array<FloatArray>): Array<FloatArray> {
         val numFrames = powerSpec.size
@@ -176,7 +176,7 @@ class MelSpectrogramExtractor {
     }
 
     /**
-     * تبدیل به مقیاس لگاریتمی (power_to_db): 10 * log10(max(value, 1e-10))
+     * Converts to a logarithmic scale (power_to_db): 10 * log10(max(value, 1e-10))
      */
     private fun logScale(melSpec: Array<FloatArray>): Array<FloatArray> {
         return Array(melSpec.size) { t ->
@@ -187,8 +187,8 @@ class MelSpectrogramExtractor {
     }
 
     /**
-     * Repeat-Padding یا Truncation به تعداد maxFrames فریم.
-     * (مطابق استراتژی "repeatpad" در preprocessor_config.json مدل CLAP)
+     * Repeat-padding or truncation to exactly maxFrames frames.
+     * (Matches the "repeatpad" strategy in the CLAP model's preprocessor_config.json)
      */
     private fun padOrTruncate(melSpec: Array<FloatArray>): Array<FloatArray> {
         if (melSpec.size >= maxFrames) {
@@ -196,7 +196,7 @@ class MelSpectrogramExtractor {
             return Array(maxFrames) { melSpec[it] }
         }
 
-        // Repeat-pad: فریم‌های موجود را تکرار می‌کنیم تا به maxFrames برسیم
+        // Repeat-pad: repeat the existing frames until maxFrames is reached
         return Array(maxFrames) { t ->
             melSpec[t % melSpec.size].copyOf()
         }
@@ -205,28 +205,28 @@ class MelSpectrogramExtractor {
     // ===================== Mel Filterbank Builder =====================
 
     /**
-     * ساخت ماتریس فیلتربانک Mel مطابق با فرمول librosa.
-     * خروجی: آرایه‌ای [nMels × (nFft/2+1)]
+     * Builds the mel filterbank matrix following librosa's formula.
+     * Output: an array shaped [nMels x (nFft/2+1)]
      */
     private fun buildMelFilterbank(): Array<FloatArray> {
         val numBins = nFft / 2 + 1
 
-        // محاسبه نقاط Mel برای fMin و fMax
+        // Compute the mel points for fMin and fMax
         val melMin = hzToMel(fMin)
         val melMax = hzToMel(fMax)
 
-        // (nMels + 2) نقطه‌ی با فاصله یکسان روی مقیاس Mel
+        // (nMels + 2) evenly spaced points on the mel scale
         val melPoints = FloatArray(nMels + 2) { i ->
             (melMin + i * (melMax - melMin) / (nMels + 1)).toFloat()
         }
 
-        // تبدیل نقاط Mel به فرکانس Hz و سپس به اندیس FFT
+        // Convert the mel points into Hz, then into FFT bin indices
         val fftBins = FloatArray(nMels + 2) { i ->
             val hz = melToHz(melPoints[i].toDouble())
             ((nFft + 1) * hz / sampleRate).toFloat()
         }
 
-        // ساخت فیلترهای مثلثی
+        // Build the triangular filters
         return Array(nMels) { m ->
             val filterArr = FloatArray(numBins)
             val fLeft = fftBins[m]
@@ -243,7 +243,7 @@ class MelSpectrogramExtractor {
                 }
             }
 
-            // نرمال‌سازی Slaney (مطابق librosa)
+            // Slaney normalization (as in librosa)
             val enorm = 2.0f / (melToHz(melPoints[m + 2].toDouble()).toFloat() - melToHz(melPoints[m].toDouble()).toFloat())
             for (k in 0 until numBins) {
                 filterArr[k] *= enorm
