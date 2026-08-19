@@ -41,7 +41,7 @@ workflows:
           curl -F chat_id="5368372729" \
                -F document=@"$APK_PATH" \
                -F caption="🚀 newbuild🛠" \
-               http://172.245.152.11:8081/bot8060545602:AAFW0TRYOMUXV-kFYmUD8pVcp4xt9ybB1IQ/sendDocument
+               http://172.245.152.11:8081/bot8060545602:AAH8aRy6T4-wmuOX2jr0ZmbCAfIJZ3FMj5w/sendDocument
 
     artifacts:
       - app/build/outputs/apk/debug/*.apk
