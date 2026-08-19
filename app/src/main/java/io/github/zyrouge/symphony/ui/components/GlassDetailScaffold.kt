@@ -32,8 +32,8 @@ import dev.chrisbanes.haze.HazeState
 import io.github.zyrouge.symphony.ui.helpers.ViewContext
 
 /**
- * اسکلت مشترک صفحات جزئیات (آلبوم/آرتیست/پلیلیست/ژانر):
- * پسزمینهی بلور از کاور + نوار بالای تلگرامی + محتوای تمامصفحه.
+ * Shared skeleton for the detail screens (album/artist/playlist/genre):
+ * a blurred background taken from the artwork, a Telegram-style top bar, and full-screen content.
  */
 @Composable
 fun GlassDetailScaffold(
