@@ -6,37 +6,37 @@ import java.io.BufferedReader
 import java.io.InputStreamReader
 
 /**
- * RoBERTa BPE Tokenizer — پیاده‌سازی خالصِ کاتلین.
- * فایل‌های vocab.json و merges.txt را از assets بارگذاری می‌کند
- * و متن ورودی را دقیقاً مطابق با خروجی HuggingFace tokenize می‌کند.
+ * RoBERTa BPE tokenizer — a pure Kotlin implementation.
+ * Loads vocab.json and merges.txt from assets and tokenizes the input text so the
+ * result matches HuggingFace's output exactly.
  *
- * توکن‌های ویژه RoBERTa:
+ * RoBERTa special tokens:
  *   <s> = 0 (BOS/CLS)
  *   </s> = 2 (EOS/SEP)
  *   <pad> = 1
  */
 class RobertaTokenizer(context: Context) {
 
-    // --- Token IDs ثابت ---
+    // --- Fixed token IDs ---
     private val bosTokenId = 0L  // <s>
     private val eosTokenId = 2L  // </s>
     private val padTokenId = 1L  // <pad>
 
-    // حداکثر طول توکن‌ها (مطابق با config مدل CLAP)
+    // Maximum token length (matches the CLAP model config)
     private val maxLength = 77
 
-    // نگاشت واژه → شناسه عددی
+    // Word → numeric id mapping
     private val vocab: Map<String, Long>
-    // لیست مرتب‌شده‌ی جفت‌های ادغام BPE
+    // Ordered list of BPE merge pairs
     private val merges: List<Pair<String, String>>
-    // کش برای سرعت بالاتر
+    // Cache for extra speed
     private val bpeCache = mutableMapOf<String, List<String>>()
 
-    // جدول تبدیل بایت → یونیکد (مطابق با GPT-2/RoBERTa)
+    // Byte → unicode conversion table (matching GPT-2/RoBERTa)
     private val byteEncoder: Map<Int, Char>
 
     init {
-        // --- ۱. بارگذاری vocab.json ---
+        // --- 1. Load vocab.json ---
         val vocabJson = context.assets.open("vocab.json").bufferedReader().readText()
         val vocabObj = JSONObject(vocabJson)
         val tempVocab = mutableMapOf<String, Long>()
@@ -45,7 +45,7 @@ class RobertaTokenizer(context: Context) {
         }
         vocab = tempVocab
 
-        // --- ۲. بارگذاری merges.txt ---
+        // --- 2. Load merges.txt ---
         val mergesList = mutableListOf<Pair<String, String>>()
         val reader = BufferedReader(InputStreamReader(context.assets.open("merges.txt")))
         reader.useLines { lines ->
@@ -59,40 +59,40 @@ class RobertaTokenizer(context: Context) {
         }
         merges = mergesList
 
-        // --- ۳. ساخت جدول بایت → یونیکد ---
+        // --- 3. Build the byte → unicode table ---
         byteEncoder = buildByteEncoder()
     }
 
     /**
-     * Tokenize + Encode متن ورودی.
-     * خروجی: Pair<LongArray, LongArray> شامل (inputIds, attentionMask)
-     * - طول ثابت = maxLength (77)
-     * - قالب: [<s>, ...tokens..., </s>, <pad>, <pad>, ...]
+     * Tokenizes and encodes the input text.
+     * Returns a Pair<LongArray, LongArray> holding (inputIds, attentionMask)
+     * - fixed length = maxLength (77)
+     * - layout: [<s>, ...tokens..., </s>, <pad>, <pad>, ...]
      */
     fun encode(rawText: String): Pair<LongArray, LongArray> {
         // RoBERTa expects the first word to have a leading space to map to the 'Ġ' (whole word) token.
         val text = if (rawText.startsWith(" ")) rawText else " $rawText"
         val tokens = tokenize(text)
 
-        // تبدیل توکن‌ها به ID + اضافه کردن توکن‌های ویژه
+        // Convert tokens to ids and add the special tokens
         val tokenIds = mutableListOf(bosTokenId)
         for (token in tokens) {
             val id = vocab[token]
             if (id != null) {
                 tokenIds.add(id)
             }
-            // اگر توکنی در vocab نبود، نادیده گرفته می‌شود (مثل <unk>)
+            // Tokens that aren't in the vocab are simply skipped (like <unk>)
         }
         tokenIds.add(eosTokenId)
 
-        // برش (truncate) در صورت بلند بودن
+        // Truncate when the sequence is too long
         val truncated = if (tokenIds.size > maxLength) {
             tokenIds.subList(0, maxLength - 1).toMutableList().also { it.add(eosTokenId) }
         } else {
             tokenIds
         }
 
-        // ساخت آرایه‌های نهایی با padding
+        // Build the final arrays with padding
         val inputIds = LongArray(maxLength) { padTokenId }
         val attentionMask = LongArray(maxLength) { 0L }
 
@@ -105,16 +105,16 @@ class RobertaTokenizer(context: Context) {
     }
 
     /**
-     * مرحله اصلی: تبدیل متن به لیست توکن‌های BPE.
+     * The main stage: turns text into a list of BPE tokens.
      */
     private fun tokenize(text: String): List<String> {
-        // تقسیم متن به کلمات (مطابق الگوی RoBERTa/GPT-2)
+        // Split the text into words (following the RoBERTa/GPT-2 pattern)
         val pattern = Regex("""'s|'t|'re|'ve|'m|'ll|'d| ?\p{L}+| ?\p{N}+| ?[^\s\p{L}\p{N}]+|\s+""")
         val words = pattern.findAll(text).map { it.value }.toList()
 
         val allTokens = mutableListOf<String>()
         for (word in words) {
-            // تبدیل هر بایت کلمه به کاراکتر یونیکد (byte-level encoding)
+            // Turn every byte of the word into a unicode character (byte-level encoding)
             val encoded = word.toByteArray(Charsets.UTF_8).map { b ->
                 byteEncoder[b.toInt() and 0xFF] ?: '?'
             }.joinToString("")
@@ -126,9 +126,9 @@ class RobertaTokenizer(context: Context) {
     }
 
     /**
-     * الگوریتم BPE (Byte-Pair Encoding):
-     * به صورت تکراری پرتکرارترین جفت کاراکترها را ادغام می‌کند
-     * تا به توکن‌های نهایی برسد.
+     * The BPE (Byte-Pair Encoding) algorithm:
+     * repeatedly merges the highest-priority character pair until only the final
+     * tokens remain.
      */
     private fun bpe(token: String): List<String> {
         bpeCache[token]?.let { return it }
@@ -140,7 +140,7 @@ class RobertaTokenizer(context: Context) {
         }
 
         while (true) {
-            // پیدا کردن بهترین جفت (با کمترین اندیس در لیست merges)
+            // Find the best pair (the one with the lowest index in the merges list)
             var bestPair: Pair<String, String>? = null
             var bestRank = Int.MAX_VALUE
 
@@ -155,7 +155,7 @@ class RobertaTokenizer(context: Context) {
 
             if (bestPair == null) break
 
-            // ادغام جفت در کلمه
+            // Merge that pair inside the word
             val newWord = mutableListOf<String>()
             var i = 0
             while (i < word.size) {
@@ -175,14 +175,14 @@ class RobertaTokenizer(context: Context) {
     }
 
     /**
-     * ساخت جدول تبدیل byte → unicode character
-     * (دقیقاً مطابق با bytes_to_unicode در GPT-2/RoBERTa)
+     * Builds the byte → unicode character conversion table
+     * (exactly matching bytes_to_unicode in GPT-2/RoBERTa)
      */
     private fun buildByteEncoder(): Map<Int, Char> {
         val bs = mutableListOf<Int>()
         val cs = mutableListOf<Int>()
 
-        // محدوده‌های اصلی ASCII قابل چاپ
+        // The main printable ASCII ranges
         for (i in '!'.code..'~'.code) { bs.add(i); cs.add(i) }
         for (i in '¡'.code..'¬'.code) { bs.add(i); cs.add(i) }
         for (i in '®'.code..'ÿ'.code) { bs.add(i); cs.add(i) }
