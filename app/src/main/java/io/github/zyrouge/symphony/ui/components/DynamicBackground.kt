@@ -40,13 +40,13 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
 /**
- * رنگ accent استخراجشده از کاور — همهجای Now Playing از این استفاده میکنه.
+ * The accent color extracted from the artwork — used all across Now Playing.
  */
 val LocalNowPlayingAccent = compositionLocalOf { Color.White }
 
 /**
- * پسزمینهی داینامیک: کاور بلورشده + saturation بیشتر + گرادیان تیره.
- * روی اندروید < 12 بلور اعمال نمیشه (fallback: کاور بزرگشده + گرادیان تیرهتر).
+ * Dynamic background: blurred artwork + extra saturation + a dark gradient.
+ * On Android < 12 the blur is not applied (fallback: scaled-up artwork with a darker gradient).
  */
 @Composable
 fun NowPlayingDynamicBackground(
@@ -57,7 +57,7 @@ fun NowPlayingDynamicBackground(
     Box(
         modifier = modifier
             .fillMaxSize()
-            .background(Color(0xFF121212)) // fallback وقتی کاور نیست
+            .background(Color(0xFF121212)) // fallback for when there is no artwork
     ) {
         AnimatedContent(
             label = "now-playing-dynamic-background",
@@ -78,14 +78,14 @@ fun NowPlayingDynamicBackground(
                 modifier = Modifier
                     .fillMaxSize()
                     .graphicsLayer {
-                        // بزرگنمایی که لبههای بلور تمیز بمونن
+                        // Scale up so the blurred edges stay clean
                         scaleX = 1.25f
                         scaleY = 1.25f
                     }
                     .blur(70.dp)
             )
         }
-        // گرادیان تیره: بالا روشنتر، پایین تیرهتر — برای خوانایی متن و کنترلها
+        // Dark gradient: lighter at the top, darker at the bottom — keeps text and controls readable
         Box(
             modifier = Modifier
                 .fillMaxSize()
@@ -103,7 +103,8 @@ fun NowPlayingDynamicBackground(
 }
 
 /**
- * رنگ غالب کاور رو با Palette درمیاره و برای خوانایی روی پسزمینهی تیره روشنش میکنه.
+ * Pulls the dominant color out of the artwork with Palette and brightens it so it stays
+ * readable against the dark background.
  */
 @Composable
 fun rememberArtworkAccent(context: ViewContext, song: Song): Color {
@@ -136,8 +137,8 @@ fun rememberArtworkAccent(context: ViewContext, song: Song): Color {
 }
 
 /**
- * پسزمینهی داینامیک «محو» برای صفحههای لایبرری —
- * کاور آهنگ در حال پخش فقط یه تهرنگ میده، خوانایی لیستها حفظ میشه.
+ * A "faded" dynamic background for the library screens —
+ * the currently playing song's artwork only adds a subtle tint, so lists stay readable.
  */
 @Composable
 fun HomeDynamicBackground(
@@ -185,7 +186,7 @@ fun HomeDynamicBackground(
                 )
             } ?: Box(modifier = Modifier.fillMaxSize())
         }
-        // اسکریم قوی از رنگ تم — پایین تیرهتر که پیلها بیشتر «شیشه» دیده بشن
+        // A strong scrim in the theme color — darker at the bottom so the pills read more like glass
         Box(
             modifier = Modifier
                 .fillMaxSize()
@@ -203,8 +204,8 @@ fun HomeDynamicBackground(
 }
 
 /**
- * پسزمینهی داینامیک برای صفحات جزئیات —
- * کاور خود آلبوم/آرتیست بلور میشه (نه آهنگ در حال پخش).
+ * Dynamic background for the detail screens —
+ * the album's or artist's own artwork gets blurred, not the currently playing song's.
  */
 @Composable
 fun ArtworkDynamicBackground(
