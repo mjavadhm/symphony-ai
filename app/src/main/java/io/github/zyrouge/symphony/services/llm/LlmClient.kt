@@ -11,8 +11,8 @@ import java.net.HttpURLConnection
 import java.net.URL
 
 /**
- * کلاینت خام برای هر سرور OpenAI-compatible.
- * هیچی از موزیک و میکس نمیدونه — فقط پیام میفرسته و جواب میگیره.
+ * Bare-bones client for any OpenAI-compatible server.
+ * It knows nothing about music or mixes: it only sends messages and returns answers.
  */
 class LlmClient(private val symphony: Symphony) {
     enum class UsageMode { Off, Manual, Auto }
@@ -112,7 +112,7 @@ class LlmClient(private val symphony: Symphony) {
 
     suspend fun completeMessages(
         system: String,
-        messages: List<Pair<String, String>>, // role به content
+        messages: List<Pair<String, String>>, // role to content
         temperature: Float = 0.9f,
     ): Result = withContext(Dispatchers.IO) {
         if (!isConfigured) {
@@ -165,9 +165,9 @@ class LlmClient(private val symphony: Symphony) {
     }
 
     /**
-     * مثل completeMessages ولی با stream: true.
-     * هر تکه متن که از مدل میاد، همون لحظه به onDelta داده میشه.
-     * آخر کار، کل متن جمع‌شده به عنوان Success برمیگرده.
+     * Same as completeMessages but with stream: true.
+     * Every chunk of text coming back from the model is handed to onDelta right away.
+     * When the stream ends, the full accumulated text is returned as Success.
      */
     suspend fun completeMessagesStreaming(
         system: String,
@@ -212,7 +212,7 @@ class LlmClient(private val symphony: Symphony) {
                 return@withContext Result.Error("HTTP $code: ${err.take(200)}")
             }
 
-            // فرمت SSE: هر خط مفید با "data:" شروع میشه و آخرش [DONE] میاد
+            // SSE format: every useful line starts with "data:" and the stream ends with [DONE]
             val full = StringBuilder()
             conn.inputStream.bufferedReader().useLines { lines ->
                 for (line in lines) {
