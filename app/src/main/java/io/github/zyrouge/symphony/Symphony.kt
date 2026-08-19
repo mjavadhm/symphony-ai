@@ -14,7 +14,9 @@ import io.github.zyrouge.symphony.services.i18n.Translator
 import io.github.zyrouge.symphony.services.radio.Radio
 import io.github.zyrouge.symphony.services.llm.LlmClient
 import io.github.zyrouge.symphony.services.llm.LlmTasks
+import io.github.zyrouge.symphony.services.spotizer.Spotizer
 import kotlinx.coroutines.launch
+import kotlin.math.abs
 
 class Symphony(application: Application) : AndroidViewModel(application), Symphony.Hooks {
     interface Hooks {
@@ -36,6 +38,18 @@ class Symphony(application: Application) : AndroidViewModel(application), Sympho
     val flow = io.github.zyrouge.symphony.services.flow.FlowAnalyzer(this)
     val llm = LlmClient(this)
     val llmTasks = LlmTasks(this)
+    val spotizer = Spotizer(
+        context = application.applicationContext,
+        isTrackOnDevice = { track ->
+            val title = track.title?.trim()?.lowercase()
+            val artist = track.artist?.trim()?.lowercase()
+            title != null && groove.song.values().any { song ->
+                song.title.trim().lowercase() == title &&
+                        (artist == null || song.artists.any { a -> a.trim().lowercase() == artist }) &&
+                        (track.durationMs <= 0L || abs(song.duration - track.durationMs) <= 3000L)
+            }
+        },
+    )
 
     var t by mutableStateOf(translator.getCurrentTranslation())
 

@@ -3,42 +3,31 @@ package io.github.zyrouge.symphony.services.spotizer
 import android.content.Context
 
 /**
- * Facade / composition root for the Spotizer online section.
+ * Facade for the Spotizer online integration, exposed as `symphony.spotizer`.
  *
- * Create one instance and keep it on the Symphony application class:
- *
- *   class Symphony : Application() {
- *       lateinit var spotizer: Spotizer
- *       override fun onCreate() {
- *           super.onCreate()
- *           spotizer = Spotizer(
- *               context = this,
- *               isTrackOnDevice = { track -> /* match against groove.song repository */ false },
- *           )
- *       }
- *   }
+ * @param isTrackOnDevice used to skip downloading tracks that already exist
+ *   in the local library (matched by title + artist and roughly by duration).
  */
 class Spotizer(
     context: Context,
-    isTrackOnDevice: (SpotizerTrack) -> Boolean = { false },
+    isTrackOnDevice: (SpotizerTrack) -> Boolean,
 ) {
     val settings = SpotizerSettings(context)
     val client = SpotizerClient(settings)
-    val users = SpotizerUserManager(context, client, settings)
+    val users = SpotizerUserManager(context, settings, client)
+    val player = SpotizerStreamPlayer()
     val downloads = SpotizerDownloadManager(
         context = context,
-        client = client,
         settings = settings,
+        client = client,
         isTrackOnDevice = isTrackOnDevice,
-        resolveUserId = { runCatching { users.ensureUser() }.getOrNull() },
+        resolveUserId = { users.ensureUser() },
     )
 
-    /**
-     * Streaming URL for the player. Point Media3 / ExoPlayer (or Symphony's
-     * RadioPlayer via Uri) at this URL; the server supports HTTP Range so
-     * seeking works out of the box. A cache miss triggers an on-demand server
-     * download, so playback may take a few seconds to start the first time.
-     */
     fun streamUrl(track: SpotizerTrack): String? =
         track.id?.let { client.streamUrl(it, settings.streamQuality.value) }
+
+    fun playStream(track: SpotizerTrack) {
+        streamUrl(track)?.let { player.play(track, it) }
+    }
 }

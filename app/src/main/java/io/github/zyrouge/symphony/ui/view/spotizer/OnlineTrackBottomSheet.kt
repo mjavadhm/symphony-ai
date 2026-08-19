@@ -8,15 +8,16 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Download
-import androidx.compose.material.icons.filled.DownloadDone
+import androidx.compose.material.icons.filled.CloudDownload
 import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material3.Button
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -26,130 +27,161 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import coil.compose.AsyncImage
-import io.github.zyrouge.symphony.services.spotizer.Spotizer
 import io.github.zyrouge.symphony.services.spotizer.SpotizerTrack
+import io.github.zyrouge.symphony.services.spotizer.SpotizerTrackStatus
+import io.github.zyrouge.symphony.ui.helpers.ViewContext
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 
-/**
- * Bottom sheet shown when tapping an online track: big cover, server cache
- * state badge (instant vs needs preparation), Play (stream) and Download.
- */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun OnlineTrackBottomSheet(
-    spotizer: Spotizer,
+    context: ViewContext,
     track: SpotizerTrack,
     onDismiss: () -> Unit,
-    /** Wire to the player: receives the stream URL (Range/seek supported). */
-    onPlay: (streamUrl: String, track: SpotizerTrack) -> Unit,
-    onOpenAlbum: ((albumId: String) -> Unit)? = null,
-    onOpenArtist: ((artistId: String) -> Unit)? = null,
 ) {
-    var cachedOnServer by remember(track.id) { mutableStateOf<Boolean?>(null) }
-    var existsLocally by remember(track.id) { mutableStateOf(false) }
+    val spotizer = context.symphony.spotizer
+    var status by remember { mutableStateOf<SpotizerTrackStatus?>(null) }
+    var statusFailed by remember { mutableStateOf(false) }
+    var queuedMessage by remember { mutableStateOf<String?>(null) }
 
     LaunchedEffect(track.id) {
-        val id = track.id ?: return@LaunchedEffect
-        cachedOnServer = runCatching {
-            spotizer.client.getTrackStatus(id, spotizer.settings.downloadQuality.value).cached
-        }.getOrNull()
+        status = null
+        statusFailed = false
+        val trackId = track.id ?: return@LaunchedEffect
+        runCatching {
+            withContext(Dispatchers.IO) {
+                spotizer.client.getTrackStatus(trackId, spotizer.settings.downloadQuality.value)
+            }
+        }.onSuccess { status = it }.onFailure { statusFailed = true }
     }
 
-    ModalBottomSheet(
-        onDismissRequest = onDismiss,
-        containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.92f),
-    ) {
+    ModalBottomSheet(onDismissRequest = onDismiss) {
         Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 24.dp)
-                .padding(bottom = 32.dp),
+                .padding(horizontal = 20.dp)
+                .padding(bottom = 24.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.spacedBy(12.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
             AsyncImage(
-                model = track.bestCover,
-                contentDescription = track.title,
+                model = track.cover,
+                contentDescription = null,
+                contentScale = ContentScale.Crop,
                 modifier = Modifier
-                    .size(180.dp)
+                    .size(140.dp)
                     .clip(RoundedCornerShape(24.dp)),
             )
             Text(
-                text = track.title ?: "Unknown",
+                track.title ?: "Unknown title",
                 style = MaterialTheme.typography.titleLarge,
                 textAlign = TextAlign.Center,
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis,
             )
             Text(
-                text = listOfNotNull(track.artist, track.album).joinToString(" - "),
+                listOfNotNull(
+                    track.artist,
+                    track.album,
+                    formatOnlineDuration(track.duration),
+                ).joinToString(" • "),
                 style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f),
                 textAlign = TextAlign.Center,
             )
 
-            // server cache badge: instant vs will-be-prepared
-            when (cachedOnServer) {
-                true -> Text(
-                    text = "\u26A1 Ready on server - instant download",
-                    style = MaterialTheme.typography.labelMedium,
+            val badges = mutableListOf<String>()
+            status?.let { nStatus ->
+                badges += if (nStatus.cached) "\u26a1 Ready on server"
+                else "\u23f3 Will be prepared on first request"
+                nStatus.format?.let { badges += it.uppercase() }
+                nStatus.size?.takeIf { it > 0 }?.let {
+                    badges += String.format("%.1f MB", it / (1024f * 1024f))
+                }
+            }
+            if (track.explicit == true) {
+                badges += "Explicit"
+            }
+            if (badges.isNotEmpty()) {
+                Text(
+                    badges.joinToString("  \u00b7  "),
+                    style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.primary,
+                    textAlign = TextAlign.Center,
                 )
-                false -> Text(
-                    text = "\u23F3 Will be prepared on server first",
-                    style = MaterialTheme.typography.labelMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+            }
+            if (statusFailed) {
+                Text(
+                    "Could not check server status",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.error,
                 )
-                null -> {}
             }
 
             Row(
-                modifier = Modifier.fillMaxWidth(),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(top = 8.dp),
                 horizontalArrangement = Arrangement.spacedBy(12.dp),
             ) {
-                FilledTonalButton(
+                Button(
                     modifier = Modifier.weight(1f),
                     onClick = {
-                        spotizer.streamUrl(track)?.let { onPlay(it, track) }
+                        spotizer.playStream(track)
                         onDismiss()
                     },
                 ) {
-                    Icon(Icons.Default.PlayArrow, contentDescription = null)
-                    Text("  Play")
+                    Icon(Icons.Filled.PlayArrow, null)
+                    Text(" Stream")
                 }
-                FilledTonalButton(
+                OutlinedButton(
                     modifier = Modifier.weight(1f),
-                    enabled = !existsLocally,
                     onClick = {
-                        spotizer.downloads.enqueueTrack(track)
-                        existsLocally = true // reflect "queued" state on the button
+                        val queued = spotizer.downloads.enqueueTrack(track)
+                        queuedMessage =
+                            if (queued) "Added to downloads" else "Already in downloads"
                     },
                 ) {
-                    if (existsLocally) {
-                        Icon(Icons.Default.DownloadDone, contentDescription = null)
-                        Text("  Queued")
-                    } else {
-                        Icon(Icons.Default.Download, contentDescription = null)
-                        Text("  Download")
+                    Icon(Icons.Filled.CloudDownload, null)
+                    Text(" Download")
+                }
+            }
+            queuedMessage?.let { message ->
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(4.dp),
+                ) {
+                    Text(message, style = MaterialTheme.typography.bodySmall)
+                    TextButton(onClick = {
+                        onDismiss()
+                        context.navController.navigate(SpotizerDownloadsViewRoute)
+                    }) {
+                        Text("Open downloads")
                     }
                 }
             }
 
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 track.albumId?.let { albumId ->
-                    if (onOpenAlbum != null) {
-                        androidx.compose.material3.TextButton(onClick = {
-                            onDismiss()
-                            onOpenAlbum(albumId)
-                        }) { Text("View album") }
+                    TextButton(onClick = {
+                        onDismiss()
+                        context.navController.navigate(OnlineAlbumViewRoute(albumId))
+                    }) {
+                        Text("View album")
                     }
                 }
                 track.artistId?.let { artistId ->
-                    if (onOpenArtist != null) {
-                        androidx.compose.material3.TextButton(onClick = {
-                            onDismiss()
-                            onOpenArtist(artistId)
-                        }) { Text("View artist") }
+                    TextButton(onClick = {
+                        onDismiss()
+                        context.navController.navigate(OnlineArtistViewRoute(artistId))
+                    }) {
+                        Text("View artist")
                     }
                 }
             }

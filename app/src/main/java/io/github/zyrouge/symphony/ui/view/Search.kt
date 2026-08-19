@@ -22,6 +22,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.CloudDownload
 import androidx.compose.material.icons.filled.PriorityHigh
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -61,6 +62,7 @@ import androidx.compose.ui.unit.dp
 import dev.chrisbanes.haze.HazeState
 import dev.chrisbanes.haze.hazeSource
 import io.github.zyrouge.symphony.services.groove.Groove
+import io.github.zyrouge.symphony.services.spotizer.SpotizerTrack
 import io.github.zyrouge.symphony.ui.components.AlbumArtistDropdownMenu
 import io.github.zyrouge.symphony.ui.components.AlbumDropdownMenu
 import io.github.zyrouge.symphony.ui.components.AnimatedNowPlayingBottomBar
@@ -73,6 +75,12 @@ import io.github.zyrouge.symphony.ui.components.LocalHazeState
 import io.github.zyrouge.symphony.ui.components.PlaylistDropdownMenu
 import io.github.zyrouge.symphony.ui.components.SongCard
 import io.github.zyrouge.symphony.ui.helpers.ViewContext
+import io.github.zyrouge.symphony.ui.view.spotizer.OnlineSearchBody
+import io.github.zyrouge.symphony.ui.view.spotizer.OnlineSearchKindChips
+import io.github.zyrouge.symphony.ui.view.spotizer.OnlineSearchState
+import io.github.zyrouge.symphony.ui.view.spotizer.OnlineTrackBottomSheet
+import io.github.zyrouge.symphony.ui.view.spotizer.SpotizerDownloadsViewRoute
+import io.github.zyrouge.symphony.ui.view.spotizer.SpotizerStreamBar
 import io.github.zyrouge.symphony.utils.joinToStringIfNotEmpty
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -110,6 +118,13 @@ fun SearchView(context: ViewContext, route: SearchViewRoute) {
     val isSemanticSearchReady by context.symphony.semanticSearch.isReady.collectAsState()
     val showAiSearchTab = isSemanticSearchEnabled && isSemanticSearchReady
     var isAiSearchSelected by rememberSaveable { mutableStateOf(false) }
+
+    var searchSource by rememberSaveable { mutableStateOf("local") }
+    val isOnlineSearch = searchSource == "online"
+    val onlineSearch = remember {
+        OnlineSearchState(context.symphony.spotizer.client, coroutineScope)
+    }
+    var selectedOnlineTrack by remember { mutableStateOf<SpotizerTrack?>(null) }
 
     fun isChipSelected(kind: Groove.Kind) =
         (selectedChip == null && !isAiSearchSelected) || selectedChip == kind
@@ -215,6 +230,12 @@ fun SearchView(context: ViewContext, route: SearchViewRoute) {
         }
     }
 
+    LaunchedEffect(terms, searchSource) {
+        if (searchSource == "online") {
+            onlineSearch.onQueryChanged(terms)
+        }
+    }
+
     CompositionLocalProvider(LocalHazeState provides hazeState) {
         Box(modifier = Modifier.fillMaxSize()) {
             HomeDynamicBackground(context)
@@ -279,7 +300,8 @@ fun SearchView(context: ViewContext, route: SearchViewRoute) {
                                             Box(contentAlignment = Alignment.CenterStart) {
                                                 if (terms.isEmpty()) {
                                                     Text(
-                                                        context.symphony.t.SearchYourMusic,
+                                                        if (isOnlineSearch) "Search Spotizer..."
+                                                        else context.symphony.t.SearchYourMusic,
                                                         style = MaterialTheme.typography.bodyLarge,
                                                         color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f),
                                                         maxLines = 1,
@@ -307,78 +329,132 @@ fun SearchView(context: ViewContext, route: SearchViewRoute) {
                                     }
                                 }
                             }
+                            if (isOnlineSearch) {
+                                GlassSurface(
+                                    modifier = Modifier.size(48.dp),
+                                    shape = CircleShape,
+                                ) {
+                                    IconButton(
+                                        modifier = Modifier.size(48.dp),
+                                        onClick = {
+                                            context.navController.navigate(SpotizerDownloadsViewRoute)
+                                        },
+                                    ) {
+                                        Icon(Icons.Filled.CloudDownload, "Downloads")
+                                    }
+                                }
+                            }
                         }
                         Spacer(modifier = Modifier.height(8.dp))
                         Row(
                             horizontalArrangement = Arrangement.spacedBy(8.dp),
-                            modifier = Modifier.horizontalScroll(chipsScrollState)
+                            modifier = Modifier.padding(horizontal = 14.dp),
                         ) {
-                            Spacer(modifier = Modifier.width(6.dp))
                             GlassFilterChip(
-                                selected = selectedChip == null && !isAiSearchSelected,
-                                label = {
-                                    Text(context.symphony.t.All)
-                                },
+                                selected = !isOnlineSearch,
+                                label = { Text("Local") },
                                 onClick = {
-                                    selectedChip = null
-                                    isAiSearchSelected = false
+                                    searchSource = "local"
                                     setTerms(terms)
                                 }
                             )
-                            if (showAiSearchTab) {
+                            GlassFilterChip(
+                                selected = isOnlineSearch,
+                                label = { Text("Online (Spotizer)") },
+                                onClick = {
+                                    searchSource = "online"
+                                    onlineSearch.onQueryChanged(terms)
+                                }
+                            )
+                        }
+                        Spacer(modifier = Modifier.height(8.dp))
+                        if (isOnlineSearch) {
+                            Row(
+                                modifier = Modifier
+                                    .horizontalScroll(chipsScrollState)
+                                    .padding(horizontal = 14.dp),
+                            ) {
+                                OnlineSearchKindChips(onlineSearch)
+                            }
+                        } else {
+                            Row(
+                                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                modifier = Modifier.horizontalScroll(chipsScrollState)
+                            ) {
+                                Spacer(modifier = Modifier.width(6.dp))
                                 GlassFilterChip(
-                                    selected = isAiSearchSelected,
+                                    selected = selectedChip == null && !isAiSearchSelected,
                                     label = {
-                                        Text("AI Search")
+                                        Text(context.symphony.t.All)
                                     },
                                     onClick = {
                                         selectedChip = null
-                                        isAiSearchSelected = true
-                                        setTerms(terms)
-                                    }
-                                )
-                            }
-                            Groove.Kind.entries.map {
-                                GlassFilterChip(
-                                    selected = selectedChip == it,
-                                    label = {
-                                        Text(it.label(context))
-                                    },
-                                    modifier = Modifier.onGloballyPositioned { coordinates ->
-                                        if (!initialScroll && initialChip == it) {
-                                            val windowWidth = with(density) {
-                                                configuration.screenWidthDp.dp.toPx()
-                                            }
-                                            val position = coordinates.positionInWindow()
-                                            val start = position.x.toInt()
-                                            val width = coordinates.size.width
-                                            val end = start + width
-                                            val scrollTo = when {
-                                                width < windowWidth && end > windowWidth -> start + width
-                                                start > windowWidth -> start
-                                                else -> null
-                                            }
-                                            scrollTo?.let { v ->
-                                                coroutineScope.launch {
-                                                    chipsScrollState.animateScrollTo(v)
-                                                }
-                                            }
-                                            initialScroll = true
-                                        }
-                                    },
-                                    onClick = {
-                                        selectedChip = it
                                         isAiSearchSelected = false
                                         setTerms(terms)
                                     }
                                 )
+                                if (showAiSearchTab) {
+                                    GlassFilterChip(
+                                        selected = isAiSearchSelected,
+                                        label = {
+                                            Text("AI Search")
+                                        },
+                                        onClick = {
+                                            selectedChip = null
+                                            isAiSearchSelected = true
+                                            setTerms(terms)
+                                        }
+                                    )
+                                }
+                                Groove.Kind.entries.map {
+                                    GlassFilterChip(
+                                        selected = selectedChip == it,
+                                        label = {
+                                            Text(it.label(context))
+                                        },
+                                        modifier = Modifier.onGloballyPositioned { coordinates ->
+                                            if (!initialScroll && initialChip == it) {
+                                                val windowWidth = with(density) {
+                                                    configuration.screenWidthDp.dp.toPx()
+                                                }
+                                                val position = coordinates.positionInWindow()
+                                                val start = position.x.toInt()
+                                                val width = coordinates.size.width
+                                                val end = start + width
+                                                val scrollTo = when {
+                                                    width < windowWidth && end > windowWidth -> start + width
+                                                    start > windowWidth -> start
+                                                    else -> null
+                                                }
+                                                scrollTo?.let { v ->
+                                                    coroutineScope.launch {
+                                                        chipsScrollState.animateScrollTo(v)
+                                                    }
+                                                }
+                                                initialScroll = true
+                                            }
+                                        },
+                                        onClick = {
+                                            selectedChip = it
+                                            isAiSearchSelected = false
+                                            setTerms(terms)
+                                        }
+                                    )
+                                }
+                                Spacer(modifier = Modifier.width(6.dp))
                             }
-                            Spacer(modifier = Modifier.width(6.dp))
                         }
                     }
                 },
                 content = { contentPadding ->
-                    results?.run {
+                    if (isOnlineSearch) {
+                        OnlineSearchBody(
+                            context = context,
+                            state = onlineSearch,
+                            contentPadding = contentPadding,
+                            onOpenTrack = { selectedOnlineTrack = it },
+                        )
+                    } else results?.run {
                         val hasSongs =
                             (isChipSelected(Groove.Kind.SONG) || isAiSearchSelected) && songIds.isNotEmpty()
                         val hasArtists = isChipSelected(Groove.Kind.ARTIST) && artistNames.isNotEmpty()
@@ -607,9 +683,15 @@ fun SearchView(context: ViewContext, route: SearchViewRoute) {
                     }
                 },
                 bottomBar = {
-                    AnimatedNowPlayingBottomBar(context)
+                    Column {
+                        SpotizerStreamBar(context)
+                        AnimatedNowPlayingBottomBar(context)
+                    }
                 }
             )
+            selectedOnlineTrack?.let { track ->
+                OnlineTrackBottomSheet(context, track) { selectedOnlineTrack = null }
+            }
         }
     }
 }
@@ -660,4 +742,3 @@ private fun GlassFilterChip(
         )
     }
 }
-

@@ -20,6 +20,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.AutoAwesome
+import androidx.compose.material.icons.filled.CloudDownload
 import androidx.compose.material.icons.filled.FindInPage
 import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.LibraryMusic
@@ -61,6 +62,7 @@ import io.github.zyrouge.symphony.ui.view.settings.PlayerSettingsViewRoute
 import io.github.zyrouge.symphony.ui.view.settings.SemanticSearchSettingsViewRoute
 import io.github.zyrouge.symphony.ui.view.settings.BackupSettingsViewRoute
 import io.github.zyrouge.symphony.ui.view.settings.RecommendationSettingsRoute
+import io.github.zyrouge.symphony.ui.view.spotizer.SpotizerSettingsViewRoute
 import kotlinx.serialization.Serializable
 
 @Serializable
@@ -191,6 +193,15 @@ fun SettingsView(context: ViewContext, route: SettingsViewRoute) {
                                 title = { Text(context.symphony.t.NowPlaying) },
                                 onClick = {
                                     context.navController.navigate(NowPlayingSettingsViewRoute)
+                                },
+                            )
+                        }
+                        SettingsGlassGroup {
+                            SettingsSimpleTile(
+                                icon = { Icon(Icons.Filled.CloudDownload, null) },
+                                title = { Text("Spotizer (Online)") },
+                                onClick = {
+                                    context.navController.navigate(SpotizerSettingsViewRoute)
                                 },
                             )
                         }

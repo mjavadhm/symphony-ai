@@ -1,92 +1,166 @@
 package io.github.zyrouge.symphony.ui.view.spotizer
 
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Slider
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
-import io.github.zyrouge.symphony.services.spotizer.Spotizer
+import dev.chrisbanes.haze.hazeSource
 import io.github.zyrouge.symphony.services.spotizer.SpotizerQuality
+import io.github.zyrouge.symphony.ui.components.GlassSurface
+import io.github.zyrouge.symphony.ui.components.LocalHazeState
+import io.github.zyrouge.symphony.ui.helpers.ViewContext
+import kotlinx.coroutines.launch
+import kotlinx.serialization.Serializable
 
-/**
- * Spotizer section for Symphony's settings screen. Either embed
- * [SpotizerSettingsBody] inside the existing SettingsView, or route to it
- * as its own page.
- */
+@Serializable
+object SpotizerSettingsViewRoute
+
 @Composable
-fun SpotizerSettingsBody(
-    spotizer: Spotizer,
-    modifier: Modifier = Modifier,
+private fun SpotizerSettingsGroup(
+    title: String,
+    content: @Composable () -> Unit,
 ) {
+    GlassSurface(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 12.dp, vertical = 6.dp),
+        shape = RoundedCornerShape(24.dp),
+    ) {
+        Column(modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp)) {
+            Text(
+                title,
+                style = MaterialTheme.typography.labelLarge,
+                color = MaterialTheme.colorScheme.primary,
+                modifier = Modifier.padding(bottom = 8.dp),
+            )
+            content()
+        }
+    }
+}
+
+@Composable
+private fun QualityRadioRow(label: String, selected: Boolean, onClick: () -> Unit) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable(onClick = onClick)
+            .padding(vertical = 2.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        RadioButton(selected = selected, onClick = onClick)
+        Text(label, style = MaterialTheme.typography.bodyMedium)
+    }
+}
+
+@Composable
+private fun SwitchRow(
+    title: String,
+    subtitle: String,
+    checked: Boolean,
+    onCheckedChange: (Boolean) -> Unit,
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable { onCheckedChange(!checked) }
+            .padding(vertical = 6.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Column(modifier = Modifier.weight(1f)) {
+            Text(title, style = MaterialTheme.typography.bodyLarge)
+            Text(
+                subtitle,
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f),
+            )
+        }
+        Switch(checked = checked, onCheckedChange = onCheckedChange)
+    }
+}
+
+@Composable
+fun SpotizerSettingsView(context: ViewContext) {
+    val spotizer = context.symphony.spotizer
     val settings = spotizer.settings
+    val coroutineScope = rememberCoroutineScope()
+
     val downloadQuality by settings.downloadQuality.collectAsState()
     val streamQuality by settings.streamQuality.collectAsState()
     val skipExisting by settings.skipExistingTracks.collectAsState()
     val wifiOnly by settings.wifiOnlyDownloads.collectAsState()
     val maxConcurrent by settings.maxConcurrentDownloads.collectAsState()
     val folderName by settings.downloadFolderName.collectAsState()
+    val serverBaseUrl by settings.serverBaseUrl.collectAsState()
 
-    Column(
-        modifier = modifier
-            .fillMaxSize()
-            .verticalScroll(rememberScrollState())
-            .padding(16.dp),
-        verticalArrangement = Arrangement.spacedBy(12.dp),
-    ) {
-        // --- download quality ---
-        SettingsCard(title = "Download quality") {
-            SpotizerQuality.ALL.forEach { quality ->
-                QualityRow(
-                    label = SpotizerQuality.label(quality),
-                    selected = quality == downloadQuality,
-                    onClick = { settings.setDownloadQuality(quality) },
-                )
+    SpotizerPageScaffold(
+        context = context,
+        title = "Spotizer (Online)",
+    ) { contentPadding ->
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .hazeSource(state = LocalHazeState.current, zIndex = 1f)
+                .verticalScroll(rememberScrollState())
+                .padding(contentPadding)
+                .padding(vertical = 8.dp),
+        ) {
+            SpotizerSettingsGroup(title = "Download quality") {
+                SpotizerQuality.all.forEach { quality ->
+                    QualityRadioRow(
+                        label = SpotizerQuality.label(quality),
+                        selected = downloadQuality == quality,
+                    ) {
+                        settings.setDownloadQuality(quality)
+                        coroutineScope.launch {
+                            spotizer.users.syncQualityToServer()
+                        }
+                    }
+                }
             }
-        }
 
-        // --- stream quality ---
-        SettingsCard(title = "Streaming quality") {
-            SpotizerQuality.ALL.forEach { quality ->
-                QualityRow(
-                    label = SpotizerQuality.label(quality),
-                    selected = quality == streamQuality,
-                    onClick = { settings.setStreamQuality(quality) },
-                )
+            SpotizerSettingsGroup(title = "Streaming quality") {
+                SpotizerQuality.all.forEach { quality ->
+                    QualityRadioRow(
+                        label = SpotizerQuality.label(quality),
+                        selected = streamQuality == quality,
+                    ) {
+                        settings.setStreamQuality(quality)
+                    }
+                }
             }
-        }
 
-        // --- toggles ---
-        SettingsCard(title = "Downloads") {
-            ToggleRow(
-                title = "Skip tracks already on device",
-                subtitle = "When downloading albums, tracks matched in the local library are skipped",
-                checked = skipExisting,
-                onCheckedChange = { settings.setSkipExistingTracks(it) },
-            )
-            ToggleRow(
-                title = "Download on Wi-Fi only",
-                subtitle = null,
-                checked = wifiOnly,
-                onCheckedChange = { settings.setWifiOnlyDownloads(it) },
-            )
-            Column(Modifier.padding(top = 8.dp)) {
+            SpotizerSettingsGroup(title = "Downloads") {
+                SwitchRow(
+                    title = "Skip tracks already on this device",
+                    subtitle = "Album downloads will not re-download songs found in your local library",
+                    checked = skipExisting,
+                ) { settings.setSkipExistingTracks(it) }
+                SwitchRow(
+                    title = "Download on Wi-Fi only",
+                    subtitle = "Queued downloads fail fast when Wi-Fi is unavailable",
+                    checked = wifiOnly,
+                ) { settings.setWifiOnlyDownloads(it) }
                 Text(
-                    "Concurrent downloads: $maxConcurrent",
-                    style = MaterialTheme.typography.bodyMedium,
+                    "Concurrent downloads: " + maxConcurrent,
+                    style = MaterialTheme.typography.bodyLarge,
+                    modifier = Modifier.padding(top = 8.dp),
                 )
                 Slider(
                     value = maxConcurrent.toFloat(),
@@ -95,77 +169,31 @@ fun SpotizerSettingsBody(
                     steps = 1,
                 )
                 Text(
-                    "Saved to Music/$folderName",
+                    "Applies to downloads queued after the change",
                     style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f),
                 )
             }
-        }
-    }
-}
 
-@Composable
-private fun SettingsCard(
-    title: String,
-    content: @Composable () -> Unit,
-) {
-    Column(
-        modifier = Modifier
-            .fillMaxWidth()
-            .glass(cornerRadius = 16.dp)
-            .padding(16.dp),
-        verticalArrangement = Arrangement.spacedBy(4.dp),
-    ) {
-        Text(
-            text = title,
-            style = MaterialTheme.typography.titleSmall,
-            color = MaterialTheme.colorScheme.primary,
-        )
-        content()
-    }
-}
-
-@Composable
-private fun QualityRow(
-    label: String,
-    selected: Boolean,
-    onClick: () -> Unit,
-) {
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clickable(onClick = onClick)
-            .padding(vertical = 8.dp),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        androidx.compose.material3.RadioButton(selected = selected, onClick = onClick)
-        Text(label, style = MaterialTheme.typography.bodyMedium)
-    }
-}
-
-@Composable
-private fun ToggleRow(
-    title: String,
-    subtitle: String?,
-    checked: Boolean,
-    onCheckedChange: (Boolean) -> Unit,
-) {
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(vertical = 6.dp),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        Column(Modifier.weight(1f)) {
-            Text(title, style = MaterialTheme.typography.bodyMedium)
-            subtitle?.let {
+            SpotizerSettingsGroup(title = "About") {
                 Text(
-                    it,
+                    "Server: " + serverBaseUrl,
                     style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f),
+                )
+                Text(
+                    "Saved to: Music/" + folderName,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f),
+                )
+                Text(
+                    "Tracks missing from the server cache are prepared on demand; " +
+                            "the first download or stream of such tracks takes a bit longer.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f),
+                    modifier = Modifier.padding(top = 4.dp),
                 )
             }
         }
-        Switch(checked = checked, onCheckedChange = onCheckedChange)
     }
 }

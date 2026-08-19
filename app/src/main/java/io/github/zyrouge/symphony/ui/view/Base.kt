@@ -33,6 +33,14 @@ import io.github.zyrouge.symphony.ui.view.settings.PlayerSettingsView
 import io.github.zyrouge.symphony.ui.view.settings.PlayerSettingsViewRoute
 import io.github.zyrouge.symphony.ui.view.settings.SemanticSearchSettingsView
 import io.github.zyrouge.symphony.ui.view.settings.SemanticSearchSettingsViewRoute
+import io.github.zyrouge.symphony.ui.view.spotizer.DownloadQueueView
+import io.github.zyrouge.symphony.ui.view.spotizer.OnlineAlbumView
+import io.github.zyrouge.symphony.ui.view.spotizer.OnlineAlbumViewRoute
+import io.github.zyrouge.symphony.ui.view.spotizer.OnlineArtistView
+import io.github.zyrouge.symphony.ui.view.spotizer.OnlineArtistViewRoute
+import io.github.zyrouge.symphony.ui.view.spotizer.SpotizerDownloadsViewRoute
+import io.github.zyrouge.symphony.ui.view.spotizer.SpotizerSettingsView
+import io.github.zyrouge.symphony.ui.view.spotizer.SpotizerSettingsViewRoute
 import kotlinx.serialization.ExperimentalSerializationApi
 import kotlinx.serialization.serializer
 
@@ -127,6 +135,18 @@ fun BaseView(symphony: Symphony, activity: MainActivity) {
                 }
                 baseComposable<io.github.zyrouge.symphony.ui.view.settings.LlmSettingsRoute> {
                     io.github.zyrouge.symphony.ui.view.settings.LlmSettingsView(context)
+                }
+                baseComposable<OnlineAlbumViewRoute> {
+                    OnlineAlbumView(context, it.toRoute())
+                }
+                baseComposable<OnlineArtistViewRoute> {
+                    OnlineArtistView(context, it.toRoute())
+                }
+                baseComposable<SpotizerDownloadsViewRoute> {
+                    DownloadQueueView(context)
+                }
+                baseComposable<SpotizerSettingsViewRoute> {
+                    SpotizerSettingsView(context)
                 }
             }
         }
