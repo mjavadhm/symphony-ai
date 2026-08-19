@@ -13,15 +13,15 @@ sealed class DiscoverChatAction {
 }
 
 /**
- * تسکهای معنادار روی LlmClient.
- * هر فیچر جدید LLM = فقط یه تابع جدید اینجا.
+ * Meaningful tasks built on top of LlmClient.
+ * Every new LLM feature should just be one more function in here.
  */
 class LlmTasks(private val symphony: Symphony) {
     private val client get() = symphony.llm
 
     /**
-     * از روی description میکس، چند پرامپت CLAP-پسند میسازه.
-     * null یعنی خطا (نت، key، جواب خراب مدل).
+     * Turns a mix description into a handful of CLAP-friendly prompts.
+     * Returns null on failure (network, API key, malformed model output).
      */
     suspend fun generateMixPrompts(description: String, count: Int = 4): List<String>? {
         suspend fun attempt(): List<String>? {
@@ -38,14 +38,14 @@ class LlmTasks(private val symphony: Symphony) {
                     ?.takeIf { it.isNotEmpty() }
             }
         }
-        // اگه مدل کمتر از نصف تعداد خواستهشده داد، یه بار دیگه امتحان کن
+        // If the model returned less than half of what we asked for, try once more.
         val first = attempt() ?: return null
         if (first.size * 2 >= count) return first
         return attempt()?.takeIf { it.size > first.size } ?: first
     }
 
     /**
-     * برای یه لیست آهنگ، یه اسم کوتاه پلیلیستی میسازه (برای Daily Mix ها).
+     * Comes up with a short, playlist-style name for a list of songs (used for Daily Mixes).
      */
     suspend fun nameMix(titles: List<String>, artists: List<String>): String? {
         val result = client.complete(
@@ -81,8 +81,8 @@ class LlmTasks(private val symphony: Symphony) {
     }
 
     /**
-     * پارسر سهلگیر: اگه JSON خراب بود، کل متن رو یه پیام معمولی فرض میکنیم
-     * تا چت هیچوقت نشکنه.
+     * Lenient parser: if the JSON is malformed, treat the whole response as a plain
+     * message so the chat never breaks.
      */
     private fun parseChatAction(text: String): DiscoverChatAction {
         val start = text.indexOf('{')
@@ -109,8 +109,8 @@ class LlmTasks(private val symphony: Symphony) {
     }
 
     /**
-     * پارسر سهلگیر: اولین [...] توی متن رو درمیاره،
-     * چون مدلهای ضعیفتر گاهی دور JSON حرف اضافه میزنن.
+     * Lenient parser: pulls out the first [...] found in the text, because weaker
+     * models sometimes wrap the JSON in extra prose.
      */
     private fun parseStringArray(text: String): List<String>? {
         val start = text.indexOf('[')
@@ -127,10 +127,10 @@ class LlmTasks(private val symphony: Symphony) {
 }
 
 /**
- * از توی استریم JSON، فقط محتوای فیلد "reply" رو زنده بیرون میکشه —
- * پس کاربر متن رو تایپ‌شونده میبینه ولی JSON و پرامپت‌ها دیده نمیشن.
- * اگه جواب اصلا JSON نبود (مثلا کاربر پرامپت ساختاری رو عوض کرده)،
- * میره روی حالت خام و کل متن رو استریم میکنه. هیچوقت کرش نمیکنه.
+ * Extracts only the "reply" field out of the JSON stream as it arrives, so the user
+ * sees the text typing out while the JSON and the prompts stay hidden.
+ * If the response is not JSON at all (for example because the structural prompt was
+ * edited), it falls back to raw mode and streams the whole text. It never crashes.
  */
 private class ReplyStreamExtractor(private val onDelta: (String) -> Unit) {
     private val buffer = StringBuilder()
@@ -150,10 +150,10 @@ private class ReplyStreamExtractor(private val onDelta: (String) -> Unit) {
                 while (j < buffer.length && (buffer[j] == ':' || buffer[j].isWhitespace())) j++
                 if (j < buffer.length) {
                     if (buffer[j] == '"') replyStart = j + 1
-                    else plainMode = true // ساختار غیرمنتظره
+                    else plainMode = true // unexpected structure
                 }
             } else if (buffer.length > 24 && !buffer.contains("{")) {
-                plainMode = true // مدل JSON نداده؛ متن خام رو نشون بده
+                plainMode = true // the model returned no JSON; show the raw text
             }
         }
 
@@ -166,14 +166,14 @@ private class ReplyStreamExtractor(private val onDelta: (String) -> Unit) {
         }
         if (replyStart < 0) return
 
-        // از شروعِ reply جلو برو، escape ها رو باز کن، تا نقل‌قول بسته
+        // Walk forward from the start of reply, unescaping as we go, until the closing quote.
         val out = StringBuilder()
         var k = replyStart
         var decoded = 0
         loop@ while (k < buffer.length) {
             when (val c = buffer[k]) {
                 '\\' -> {
-                    if (k + 1 >= buffer.length) break@loop // escape ناقص؛ صبر کن
+                    if (k + 1 >= buffer.length) break@loop // incomplete escape; wait for more
                     val n = buffer[k + 1]
                     var step = 2
                     val ch = when (n) {
