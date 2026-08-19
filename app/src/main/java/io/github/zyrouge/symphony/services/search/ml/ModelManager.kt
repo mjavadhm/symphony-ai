@@ -53,7 +53,7 @@ class ModelManager(private val context: Context) {
                 FileOutputStream(tempFile).use { output -> input.copyTo(output) }
             } ?: return Result.failure(Exception("Cannot open the selected file."))
 
-            // ✅ اعتبارسنجی ۱: فایل ONNX معتبره؟
+            // ✅ Validation 1: is this actually a valid ONNX file?
             val inputNames: Set<String> = try {
                 OrtEnvironment.getEnvironment()
                     .createSession(tempFile.absolutePath)
@@ -63,8 +63,8 @@ class ModelManager(private val context: Context) {
                 return Result.failure(Exception("Not a valid ONNX model file."))
             }
 
-            // ✅ اعتبارسنجی ۲: مدل درست توی جای درست؟
-            // انکودر متن ورودیهای توکنایزر داره (input_ids/attention_mask)، صوتی نداره.
+            // ✅ Validation 2: is the right model going into the right slot?
+            // The text encoder has tokenizer inputs (input_ids/attention_mask); the audio one does not.
             android.util.Log.d("ModelManager", "ONNX inputs: $inputNames")
             val looksLikeText = inputNames.any {
                 it.contains("input_ids", true) || it.contains("attention", true)
