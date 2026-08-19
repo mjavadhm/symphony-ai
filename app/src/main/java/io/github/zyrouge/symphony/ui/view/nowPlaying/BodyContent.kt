@@ -433,7 +433,7 @@ private fun NowPlayingSeekBar(
     var dragging by remember { mutableStateOf(false) }
     var dragRatio by remember { mutableFloatStateOf(0f) }
 
-    // سبک اپل موزیک: track موقع لمس قطور میشه، thumb فقط موقع درگ ظاهر میشه
+    // Apple Music style: the track thickens while touched, the thumb only shows up while dragging
     val trackHeight by animateDpAsState(
         targetValue = if (dragging) 8.dp else 4.dp,
         animationSpec = spring(stiffness = Spring.StiffnessMediumLow),
@@ -664,7 +664,7 @@ private fun NowPlayingControlButton(
     icon: ImageVector,
     onClick: () -> Unit,
 ) {
-    // spring scale موقع لمس — مثل تلگرام
+    // Spring scale on press — Telegram style
     val interactionSource = remember { MutableInteractionSource() }
     val isPressed by interactionSource.collectIsPressedAsState()
     val pressScale by animateFloatAsState(
@@ -706,7 +706,7 @@ private fun NowPlayingControlButton(
             onClick()
         },
     ) {
-        // morph بین play و pause
+        // Morph between play and pause
         AnimatedContent(
             label = "control-button-icon",
             targetState = icon,

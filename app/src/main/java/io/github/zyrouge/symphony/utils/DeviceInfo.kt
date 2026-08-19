@@ -10,7 +10,7 @@ object DeviceInfo {
 
     fun deviceName(): String = "${Build.MANUFACTURER} ${Build.MODEL}".trim()
 
-    // یه UUID پایدار برای هر نصب — بدون نیاز به permission
+    // A stable UUID per install — no permission required
     fun deviceId(context: Context): String {
         val prefs = context.getSharedPreferences(PREF, Context.MODE_PRIVATE)
         prefs.getString(KEY_ID, null)?.let { return it }
