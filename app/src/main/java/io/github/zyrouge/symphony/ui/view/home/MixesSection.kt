@@ -104,7 +104,7 @@ fun MixesSection(context: ViewContext) {
             Spacer(modifier = Modifier.height(20.dp))
         }
 
-        // ---- Context Mix (فقط وقتی ساعت فعلی توی یکی از بازههاست) ----
+        // ---- Context Mix (only when the current time falls inside one of the ranges) ----
         activeCtx?.let { ctx ->
             Box(modifier = Modifier.padding(20.dp, 0.dp)) {
                 GlassSurface(
@@ -645,7 +645,7 @@ fun MixCoverCollage(
         songIds.mapNotNull { context.symphony.groove.song.get(it) }.take(4)
     }
     Box(modifier = modifier) {
-        // پسزمینه گرادیان — فقط وقتی دیده میشه که هیچ کاوری نباشه
+        // Gradient background — only visible when there is no cover art at all
         Box(
             modifier = Modifier
                 .matchParentSize()
