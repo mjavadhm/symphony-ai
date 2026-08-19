@@ -126,7 +126,7 @@ class BackupManager(private val symphony: Symphony) {
 
     // ---------- settings ----------
 
-    // کلیدهای دستگاه-محور که نباید به گوشی دیگه منتقل بشن
+    // Device-specific keys that must not be carried over to another phone
     private val excludedSettingsKeys = setOf(
         "previous_song_queue",
         "media_folders",
@@ -268,7 +268,7 @@ class BackupManager(private val symphony: Symphony) {
         val existing = store.getAllHistory()
             .map { "${it.playedAt}|${it.title}|${it.artist}" }
             .toHashSet()
-        // ایندکس تایتل برای remap وقتی path مچ نشد
+        // Title index, used to remap entries when the path doesn't match
         val byTitle = HashMap<String, String>()
         for (id in symphony.groove.song.pathCache.values) {
             val song = symphony.groove.song.get(id) ?: continue
