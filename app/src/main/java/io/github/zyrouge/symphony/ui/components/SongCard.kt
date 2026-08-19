@@ -311,7 +311,7 @@ fun SongDropdownMenu(
                     onDismissRequest()
                     coroutineScope.launch {
                         context.symphony.recommendation.setFeedback(song, true)
-                        Toast.makeText(context.activity, "ثبت شد 👍 — میکسها از این بیشتر میارن", Toast.LENGTH_SHORT).show()
+                        Toast.makeText(context.activity, "Got it 👍 — your mixes will lean into this", Toast.LENGTH_SHORT).show()
                     }
                 }
             )
@@ -322,7 +322,7 @@ fun SongDropdownMenu(
                     onDismissRequest()
                     coroutineScope.launch {
                         context.symphony.recommendation.setFeedback(song, false)
-                        Toast.makeText(context.activity, "ثبت شد 👎 — دیگه توی میکسها نمیاد", Toast.LENGTH_SHORT).show()
+                        Toast.makeText(context.activity, "Got it 👎 — this won't show up in your mixes", Toast.LENGTH_SHORT).show()
                     }
                 }
             )
@@ -397,7 +397,7 @@ fun SongDropdownMenu(
                             if (matchedSongIds.size <= 1) {
                                 Toast.makeText(
                                     context.activity,
-                                    "این آهنگ هنوز اسکن/امبد نشده یا آهنگ مشابهی پیدا نشد.",
+                                    "This song isn't indexed yet, or no similar songs were found.",
                                     Toast.LENGTH_LONG
                                 ).show()
                                 return@launch
@@ -408,14 +408,14 @@ fun SongDropdownMenu(
                             context.symphony.groove.playlist.add(playlist)
                             Toast.makeText(
                                 context.activity,
-                                "پلی‌لیست \"$playlistTitle\" با ${matchedSongIds.size} آهنگ ساخته شد",
+                                "Created \"$playlistTitle\" with ${matchedSongIds.size} songs",
                                 Toast.LENGTH_SHORT
                             ).show()
                         } catch (e: Exception) {
                             e.printStackTrace()
                             Toast.makeText(
                                 context.activity,
-                                "خطا در ساخت پلی‌لیست AI",
+                                "Couldn't create the AI playlist",
                                 Toast.LENGTH_SHORT
                             ).show()
                         } finally {
