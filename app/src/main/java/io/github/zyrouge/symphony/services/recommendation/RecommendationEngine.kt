@@ -31,7 +31,7 @@ class RecommendationEngine(private val symphony: Symphony) {
     private val prefs
         get() = symphony.applicationContext.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
 
-    // ---- تنظیمات قابل شخصیسازی ----
+    // ---- Customizable settings ----
     var discoveryRatio: Float
         get() = prefs.getFloat("discovery_ratio", 0.3f)
         set(v) = prefs.edit().putFloat("discovery_ratio", v.coerceIn(0f, 1f)).apply()
@@ -58,11 +58,11 @@ class RecommendationEngine(private val symphony: Symphony) {
     }
 
     // ---------------------------------------------------------------
-    // Daily Mixes (چندتایی با خوشهبندی) — ماندگاری یکروزه
+    // Daily Mixes (several of them, via clustering) — cached for one day
     // ---------------------------------------------------------------
     private var memoryCache: Pair<String, List<DailyMix>>? = null
 
-    // salt برای reroll؛ فقط توی حافظه. کلید = id میکس
+    // Salt used for reroll; kept in memory only. Key = mix id
     private val mixSalts = mutableMapOf<Long, Long>()
 
     private fun todayKey(): String {
@@ -125,7 +125,7 @@ class RecommendationEngine(private val symphony: Symphony) {
         val exclude = skippedIds + dislikedIds
         val positive = points.filter { it.weight > 0f }
 
-        // خوشهبندی فقط وقتی داده کافی هست؛ وگرنه یک بردار واحد
+        // Cluster only when there is enough data; otherwise fall back to a single vector
         val centroids = when {
             dailyMixCount > 1 && positive.size >= MIN_POINTS_FOR_CLUSTERING ->
                 kMeans(positive.map { it.emb }, positive.map { it.weight }, dailyMixCount)
@@ -147,8 +147,8 @@ class RecommendationEngine(private val symphony: Symphony) {
     }
 
     /**
-     * فقط توی حالت Auto: با LLM برای هر Daily Mix یه اسم واقعی میسازه.
-     * هر خطایی => همون اسم پیشفرض. هیچوقت مسیر اصلی رو نمیشکنه.
+     * Auto mode only: asks the LLM for a real name for each Daily Mix.
+     * Any failure falls back to the default name. It never breaks the main path.
      */
     private suspend fun maybeNameDailyMixes(mixes: List<DailyMix>): List<DailyMix> {
         val llm = symphony.llm
@@ -166,14 +166,14 @@ class RecommendationEngine(private val symphony: Symphony) {
             }
             when (name) {
                 null -> mix
-                // این دو کاراکتر جداکنندهی فرمت کش هستن؛ نباید توی اسم باشن
+                // These two characters are separators in the cache format, so they must not appear in a name
                 else -> mix.copy(name = name.replace("|", " ").replace(";", " ").trim())
             }
         }
     }
 
     // ---------------------------------------------------------------
-    // هستهی مشترک: نقاط سلیقه، بردار، تولید میکس
+    // Shared core: taste points, vector building, mix generation
     // ---------------------------------------------------------------
     private class TastePoint(val emb: FloatArray, val weight: Float)
 
@@ -198,7 +198,7 @@ class RecommendationEngine(private val symphony: Symphony) {
             val weight = if (rec.skipped) -0.5f * recency else rec.completionRate * recency
             points.add(TastePoint(emb, weight))
         }
-        // فیدبک صریح کاربر — قویترین سیگنال
+        // Explicit user feedback — the strongest signal
         try {
             for (fb in symphony.database.mixFeedback.getAll()) {
                 val emb = cache.getOrPut("${fb.title}|${fb.artist}".lowercase()) {
@@ -257,7 +257,7 @@ class RecommendationEngine(private val symphony: Symphony) {
         return mix.shuffled()
     }
 
-    // ---- k-means کوچک روی بردارهای نرمالشده ----
+    // ---- Small k-means over normalized vectors ----
     private fun kMeans(
         points: List<FloatArray>,
         weights: List<Float>,
@@ -265,7 +265,7 @@ class RecommendationEngine(private val symphony: Symphony) {
         iterations: Int = 8,
     ): List<FloatArray> {
         if (points.size < k * 5) return emptyList()
-        // شروع: پروزنترین نقطه + دورترینها (farthest-first)
+        // Init: heaviest point, then the farthest ones (farthest-first)
         val centroids = mutableListOf(points[weights.indices.maxBy { weights[it] }])
         while (centroids.size < k) {
             var best = 0
@@ -315,7 +315,7 @@ class RecommendationEngine(private val symphony: Symphony) {
     }
 
     // ---------------------------------------------------------------
-    // Context Mixes (بازههای ساعتی، با پشتیبانی رد شدن از نیمهشب)
+    // Context Mixes (hour ranges, including ranges that wrap past midnight)
     // ---------------------------------------------------------------
     fun hoursOf(ctx: MixContext): Set<Int> = when {
         ctx.startHour <= ctx.endHour -> (ctx.startHour..ctx.endHour).toSet()
@@ -346,7 +346,7 @@ class RecommendationEngine(private val symphony: Symphony) {
     }
 
     // ---------------------------------------------------------------
-    // فیدبک صریح (لایه ۳)
+    // Explicit feedback (layer 3)
     // ---------------------------------------------------------------
     suspend fun setFeedback(song: Song, liked: Boolean) {
         try {
@@ -364,7 +364,7 @@ class RecommendationEngine(private val symphony: Symphony) {
     }
 
     // ---------------------------------------------------------------
-    // Mood / Custom Mixes  (بدون تغییر)
+    // Mood / Custom Mixes  (unchanged)
     // ---------------------------------------------------------------
     private val coverCache = HashMap<String, List<String>>()
 
@@ -384,18 +384,18 @@ class RecommendationEngine(private val symphony: Symphony) {
         }
         val salt = mixSalts[mix.id] ?: 0L
 
-        // seed = میکس + تاریخ امروز + salt ریلود
+        // seed = mix id + today's date + reroll salt
         val seed = mix.id * 31L + todayKey().hashCode().toLong() + salt
         val rng = kotlin.random.Random(seed)
 
-        // چرخش پرامپت: هر روز (و هر reroll) یکی از پرامپتها انتخاب میشه
+        // Prompt rotation: each day (and each reroll) picks one of the prompts
         val prompt = promptList[rng.nextInt(promptList.size)]
 
-        // استخر ۳ برابری تا جا برای تنوع باشه
+        // Pull a 3x pool so there is room for variety
         val pool = symphony.semanticSearch.searchDetailed(prompt, mix.trackCount * 3)
         if (pool.isEmpty()) return emptyList()
 
-        // نویز وزندار: آهنگ مرتبطتر شانس بیشتری داره ولی انتخاب قطعی نیست
+        // Weighted noise: more relevant songs get better odds, but the pick isn't deterministic
         val topScore = pool.first().hybridScore
         val jitter = 0.25f * topScore
 
@@ -489,7 +489,7 @@ class RecommendationEngine(private val symphony: Symphony) {
     ): List<String> {
         if (!symphony.semanticSearch.isReady.value) return emptyList()
 
-        // میانگین embedding سه آهنگ آخر صف = "حال و هوای الان"
+        // Average embedding of the last three songs in the queue = "the current mood"
         val vectors = seedSongIds.takeLast(3).mapNotNull { songId ->
             val song = symphony.groove.song.get(songId) ?: return@mapNotNull null
             symphony.semanticSearch.getTrackEmbedding(song.title, song.artists.joinToString())
@@ -502,7 +502,7 @@ class RecommendationEngine(private val symphony: Symphony) {
             for (i in 0 until dim) centroid[i] += v[i] / vectors.size
         }
 
-        // آهنگهایی که این هفته skip شدن رو پیشنهاد نده
+        // Don't suggest songs that were skipped this week
         val skipped = try {
             val weekAgo = System.currentTimeMillis() - 7L * 24 * 60 * 60 * 1000
             symphony.database.playbackHistory.getRecentlySkippedSongIds(weekAgo).toSet()
@@ -545,7 +545,7 @@ class RecommendationEngine(private val symphony: Symphony) {
         }
 
         val rng = Random(System.nanoTime())
-        // نویز Gumbel: راه استاندارد برای "شافل وزندار"
+        // Gumbel noise: the standard trick for a "weighted shuffle"
         fun gumbelNoise(): Double {
             val u = rng.nextDouble().coerceIn(1e-9, 1.0 - 1e-9)
             return -ln(-ln(u))
@@ -557,7 +557,7 @@ class RecommendationEngine(private val symphony: Symphony) {
             score + gumbelNoise()
         }.toMutableList()
 
-        // آهنگ در حال پخش همیشه اول بمونه
+        // Always keep the currently playing song first
         firstSongId?.let {
             if (ordered.remove(it)) ordered.add(0, it)
         }
