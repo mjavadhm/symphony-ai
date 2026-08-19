@@ -59,7 +59,7 @@ fun IndexSongsSettingsView(context: ViewContext) {
         ActivityResultContracts.RequestPermission()
     ) { }
 
-    // وقتی ایندکس تموم/کنسل میشه، لیست آهنگهای ایندکسنشده رو تازه کن
+    // Refresh the list of unindexed songs whenever indexing finishes or is cancelled
     LaunchedEffect(allSongIds, isReady, indexingState.isActive) {
         if (!isReady || repository == null || indexingState.isActive) return@LaunchedEffect
         val filtered = allSongIds
@@ -75,7 +75,7 @@ fun IndexSongsSettingsView(context: ViewContext) {
         selectedSongs = selectedSongs.intersect(filtered.map { it.id }.toSet())
     }
 
-    // اسنکبار پایان کار (فقط وقتی از active به inactive میره)
+    // Completion snackbar (only when going from active to inactive)
     var wasActive by remember { mutableStateOf(false) }
     LaunchedEffect(indexingState.isActive) {
         if (wasActive && !indexingState.isActive && indexingState.total > 0) {
@@ -119,7 +119,7 @@ fun IndexSongsSettingsView(context: ViewContext) {
                 .padding(contentPadding),
             contentPadding = PaddingValues(bottom = 96.dp)
         ) {
-            // کارت پیشرفت غیرمسدودکننده
+            // Non-blocking progress card
             if (indexingState.isActive) {
                 item {
                     IndexingProgressCard(
@@ -129,7 +129,7 @@ fun IndexSongsSettingsView(context: ViewContext) {
                 }
             }
 
-            // خلاصه آخرین اجرا (وقتی تموم شده و خطا داشته)
+            // Summary of the last run (shown when it finished with failures)
             if (!indexingState.isActive && indexingState.total > 0 && indexingState.failedCount > 0) {
                 item {
                     GlassSurface(
@@ -306,7 +306,7 @@ private fun IndexingProgressCard(
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis
             )
-            // تخمین زمان باقیمانده
+            // Estimated time remaining
             if (state.current > 0) {
                 val elapsed = System.currentTimeMillis() - state.startedAt
                 val avgPerSong = elapsed / state.current
