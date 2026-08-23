@@ -1,6 +1,8 @@
 package io.github.zyrouge.symphony.services.radio
 
 import io.github.zyrouge.symphony.Symphony
+import io.github.zyrouge.symphony.utils.Logger
+import kotlinx.coroutines.launch
 import kotlin.random.Random
 
 class RadioShorty(private val symphony: Symphony) {
@@ -55,6 +57,34 @@ class RadioShorty(private val symphony: Symphony) {
             else -> {
                 symphony.radio.play(Radio.PlayOptions(index = 0, autostart = false))
                 false
+            }
+        }
+    }
+
+    /**
+     * Song radio: start an endless station seeded from one song.
+     * Clears the queue, plays the seed song, switches to Autoplay loop mode and
+     * prefetches a first batch of similar songs so the upcoming queue is visible.
+     */
+    fun startRadio(songId: String) {
+        symphony.radio.stop(ended = false)
+        symphony.radio.playbackSource = "radio:$songId"
+        symphony.radio.queue.add(songId)
+        symphony.radio.queue.setLoopMode(RadioQueue.LoopMode.Autoplay)
+        symphony.groove.coroutineScope.launch {
+            val next = try {
+                symphony.recommendation.getAutoplaySongs(
+                    seedSongIds = listOf(songId),
+                    excludeSongIds = setOf(songId),
+                    anchorSongId = songId,
+                )
+            } catch (err: Exception) {
+                Logger.error("RadioShorty", "start radio prefetch failed", err)
+                emptyList()
+            }
+            if (next.isNotEmpty()) {
+                // Appends without touching playback — the seed song keeps playing
+                symphony.radio.queue.add(next)
             }
         }
     }
