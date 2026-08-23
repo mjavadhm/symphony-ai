@@ -401,11 +401,16 @@ class Radio(private val symphony: Symphony) : Symphony.Hooks {
     fun extendQueueForAutoplay() {
         val insertIndex = queue.currentSongIndex + 1
         val hadPlayer = hasPlayer
+        // Song-radio mode: stay anchored to the seed song so the station keeps its identity
+        val anchorSongId = playbackSource
+            .takeIf { it.startsWith("radio:") }
+            ?.removePrefix("radio:")
         symphony.groove.coroutineScope.launch {
             val songIds = try {
                 symphony.recommendation.getAutoplaySongs(
                     seedSongIds = queue.currentQueue.toList(),
                     excludeSongIds = queue.currentQueue.toSet(),
+                    anchorSongId = anchorSongId,
                 )
             } catch (err: Exception) {
                 Logger.error("Radio", "autoplay recommendation failed", err)
