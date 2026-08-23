@@ -326,8 +326,9 @@ class Radio(private val symphony: Symphony) : Symphony.Hooks {
             player = null
             p.setOnPlaybackPositionListener {}
             
-            // Log playback history (only from 5 seconds up — skips get recorded too)
-            if (p.activelyPlayedMs >= 5_000) {
+            // Log playback history from 1 second up — instant skips are the
+            // strongest negative signal and must reach the recommendation engine
+            if (p.activelyPlayedMs >= 1_000) {
                 val playedMs = p.activelyPlayedMs
                 val song = symphony.groove.song.get(p.id)
                 symphony.groove.coroutineScope.launch {

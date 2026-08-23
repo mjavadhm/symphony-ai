@@ -26,6 +26,14 @@ class RecommendationEngine(private val symphony: Symphony) {
         private const val SKIP_EXCLUDE_DAYS = 30L
         private const val KEY_DAILY_DATE = "daily_mixes_date"
         private const val KEY_DAILY_DATA = "daily_mixes_data"
+
+        // Ranking weights (MMR): relevance vs. similarity to already-picked songs
+        private const val MMR_RELEVANCE_WEIGHT = 0.75f
+        private const val MMR_DIVERSITY_WEIGHT = 0.25f
+        // Candidates closer than this to the "avoid" centroid are dropped outright
+        private const val AVOID_HARD_CUTOFF = 0.5f
+        private const val AVOID_PENALTY = 0.4f
+        private const val MIN_NEGATIVE_POINTS_FOR_AVOID = 3
     }
 
     private val prefs
@@ -124,6 +132,8 @@ class RecommendationEngine(private val symphony: Symphony) {
 
         val exclude = skippedIds + dislikedIds
         val positive = points.filter { it.weight > 0f }
+        // What the user actively dislikes — used as a repulsive vector, not mixed into the average
+        val avoid = buildAvoidVector(points)
 
         // Cluster only when there is enough data; otherwise fall back to a single vector
         val centroids = when {
@@ -135,7 +145,7 @@ class RecommendationEngine(private val symphony: Symphony) {
 
         val used = mutableSetOf<String>()
         val mixes = centroids.mapIndexedNotNull { i, c ->
-            val ids = generateMixFromVector(c, dailyMixSize, playedIds, exclude + used)
+            val ids = generateMixFromVector(c, dailyMixSize, playedIds, exclude + used, avoid)
             used += ids
             when {
                 ids.isEmpty() -> null
@@ -210,51 +220,141 @@ class RecommendationEngine(private val symphony: Symphony) {
         return points
     }
 
+    /**
+     * Taste vector from POSITIVE signals only. Negative weights used to bend the
+     * average toward an arbitrary direction in CLAP space (subtracting a vector
+     * is not "less of that music"); dislikes are handled by [buildAvoidVector].
+     */
     private fun buildVector(points: List<TastePoint>): FloatArray? {
         if (points.size < MIN_HISTORY_FOR_TASTE) return null
+        val positive = points.filter { it.weight > 0f }
+        if (positive.isEmpty()) return null
         val acc = FloatArray(DIM)
         var totalWeight = 0f
-        for (p in points) {
+        for (p in positive) {
             for (i in 0 until DIM) acc[i] += p.emb[i] * p.weight
-            totalWeight += kotlin.math.abs(p.weight)
+            totalWeight += p.weight
         }
         if (totalWeight < 1f) return null
         return normalized(acc)
     }
 
+    /**
+     * Weighted centroid of disliked/skipped songs. Candidates near it get
+     * penalized or dropped in [generateMixFromVector]. Needs a minimum amount
+     * of negative signal, otherwise one accidental skip would define it.
+     */
+    private fun buildAvoidVector(points: List<TastePoint>): FloatArray? {
+        val negative = points.filter { it.weight < 0f }
+        if (negative.size < MIN_NEGATIVE_POINTS_FOR_AVOID) return null
+        val acc = FloatArray(DIM)
+        for (p in negative) {
+            val w = -p.weight
+            for (i in 0 until DIM) acc[i] += p.emb[i] * w
+        }
+        return normalized(acc)
+    }
+
+    /**
+     * Turns a taste vector into a track list:
+     * relevance scoring → avoid-vector filter → MMR re-ranking (diversity) with
+     * an artist cap → familiar/discovery interleave. No final shuffle: the
+     * order itself is the product of the ranking.
+     */
     private suspend fun generateMixFromVector(
         vector: FloatArray,
         limit: Int,
         playedIds: Set<String>,
         excludeIds: Set<String>,
+        avoidVector: FloatArray? = null,
     ): List<String> {
         val candidates = try {
-            symphony.semanticSearch.searchByVector(vector, limit * 3)
+            symphony.semanticSearch.searchByVector(vector, limit * 4)
         } catch (e: Exception) { return emptyList() }
 
-        val familiar = mutableListOf<String>()
-        val discovery = mutableListOf<String>()
-        val artistCount = HashMap<String, Int>()
+        class Scored(
+            val songId: String,
+            val artistKey: String,
+            val emb: FloatArray,
+            var relevance: Float,
+        )
 
+        val scored = mutableListOf<Scored>()
+        val seen = mutableSetOf<String>()
         for (track in candidates) {
             val path = track.filePath ?: continue
             val songId = resolvePathToSongId(path) ?: continue
-            if (songId in excludeIds) continue
+            if (songId in excludeIds || !seen.add(songId)) continue
             val song = symphony.groove.song.get(songId) ?: continue
+            val emb = track.meanEmbedding ?: continue
             val artistKey = song.artists.firstOrNull()?.lowercase()?.trim() ?: ""
-            val count = artistCount.getOrDefault(artistKey, 0)
-            if (artistKey.isNotEmpty() && count >= MAX_SONGS_PER_ARTIST) continue
-            artistCount[artistKey] = count + 1
-            if (songId in playedIds) familiar.add(songId) else discovery.add(songId)
+            val s = Scored(songId, artistKey, emb, dot(vector, emb))
+            if (avoidVector != null) {
+                val badness = dot(avoidVector, emb)
+                if (badness > AVOID_HARD_CUTOFF) continue
+                if (badness > 0f) s.relevance -= AVOID_PENALTY * badness
+            }
+            scored.add(s)
+        }
+        scored.sortByDescending { it.relevance }
+
+        // MMR pass — pick up to 2x the target so the interleave step has options
+        val picked = mutableListOf<Scored>()
+        val remaining = scored.toMutableList()
+        val artistCount = HashMap<String, Int>()
+        while (picked.size < limit * 2 && remaining.isNotEmpty()) {
+            var best: Scored? = null
+            var bestScore = Float.NEGATIVE_INFINITY
+            for (c in remaining) {
+                var maxSimToPicked = 0f
+                for (p in picked) {
+                    val sim = dot(c.emb, p.emb)
+                    if (sim > maxSimToPicked) maxSimToPicked = sim
+                }
+                val score = MMR_RELEVANCE_WEIGHT * c.relevance -
+                        MMR_DIVERSITY_WEIGHT * maxSimToPicked
+                if (score > bestScore) {
+                    bestScore = score
+                    best = c
+                }
+            }
+            val chosen = best ?: break
+            remaining.remove(chosen)
+            if (chosen.artistKey.isNotEmpty()) {
+                val count = artistCount.getOrDefault(chosen.artistKey, 0)
+                if (count >= MAX_SONGS_PER_ARTIST) continue
+                artistCount[chosen.artistKey] = count + 1
+            }
+            picked.add(chosen)
         }
 
-        val discoveryCount = (limit * discoveryRatio).toInt()
-        var mix = (familiar.take(limit - discoveryCount) + discovery.take(discoveryCount)).distinct()
-        if (mix.size < limit) {
-            val remaining = (familiar + discovery).distinct().filter { it !in mix.toSet() }
-            mix = mix + remaining.take(limit - mix.size)
+        // Familiar/discovery interleave: discovery tracks are spread through the
+        // list at ~discoveryRatio instead of being dumped at the end
+        val familiar = picked.filter { it.songId in playedIds }
+        val discovery = picked.filter { it.songId !in playedIds }
+        val discoveryCount = minOf(discovery.size, (limit * discoveryRatio).toInt())
+        val familiarCount = limit - discoveryCount
+        val result = mutableListOf<String>()
+        var fi = 0
+        var di = 0
+        while (result.size < limit && (fi < familiar.size || di < discovery.size)) {
+            val wantDiscovery = di < discoveryCount &&
+                    (fi >= familiarCount || di.toFloat() / (result.size + 1) < discoveryRatio)
+            when {
+                wantDiscovery && di < discovery.size -> result.add(discovery[di++].songId)
+                fi < familiar.size -> result.add(familiar[fi++].songId)
+                di < discovery.size -> result.add(discovery[di++].songId)
+            }
         }
-        return mix.shuffled()
+        // Pad from the leftover picks if the split came up short
+        if (result.size < limit) {
+            val taken = result.toSet()
+            for (s in picked) {
+                if (result.size >= limit) break
+                if (s.songId !in taken) result.add(s.songId)
+            }
+        }
+        return result
     }
 
     // ---- Small k-means over normalized vectors ----
@@ -328,14 +428,16 @@ class RecommendationEngine(private val symphony: Symphony) {
     }
 
     suspend fun getContextMixSongIds(ctx: MixContext): List<String> {
-        val vector = buildVector(collectTastePoints(hoursOf(ctx))) ?: return emptyList()
+        val points = collectTastePoints(hoursOf(ctx))
+        val vector = buildVector(points) ?: return emptyList()
+        val avoid = buildAvoidVector(points)
         val playedIds = try {
             symphony.database.playbackHistory.getAllPlayedSongIds().toSet()
         } catch (e: Exception) { emptySet() }
         val dislikedIds = try {
             symphony.database.mixFeedback.getAll().filter { !it.liked }.map { it.songId }.toSet()
         } catch (e: Exception) { emptySet() }
-        return generateMixFromVector(vector, dailyMixSize, playedIds, dislikedIds)
+        return generateMixFromVector(vector, dailyMixSize, playedIds, dislikedIds, avoid)
     }
 
     suspend fun seedDefaultContextsIfNeeded() {
@@ -492,7 +594,10 @@ class RecommendationEngine(private val symphony: Symphony) {
         // Average embedding of the last three songs in the queue = "the current mood"
         val vectors = seedSongIds.takeLast(3).mapNotNull { songId ->
             val song = symphony.groove.song.get(songId) ?: return@mapNotNull null
-            symphony.semanticSearch.getTrackEmbedding(song.title, song.artists.joinToString())
+            symphony.semanticSearch.getTrackEmbedding(
+                song.title,
+                song.artists.joinToString(),
+            )
         }
         if (vectors.isEmpty()) return emptyList()
 
@@ -501,6 +606,7 @@ class RecommendationEngine(private val symphony: Symphony) {
         for (v in vectors) {
             for (i in 0 until dim) centroid[i] += v[i] / vectors.size
         }
+        val query = normalized(centroid) ?: return emptyList()
 
         // Don't suggest songs that were skipped this week
         val skipped = try {
@@ -510,7 +616,7 @@ class RecommendationEngine(private val symphony: Symphony) {
             emptySet()
         }
 
-        val results = symphony.semanticSearch.searchByVector(centroid, limit * 5)
+        val results = symphony.semanticSearch.searchByVector(query, limit * 5)
         val picked = mutableListOf<String>()
         for (track in results) {
             val path = track.filePath ?: continue
