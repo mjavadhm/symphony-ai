@@ -29,6 +29,13 @@ class SemanticSearchRepository(boxStore: BoxStore) {
     @Volatile
     private var embeddedTracksCache: Set<String>? = null
 
+    // O(1) metadata → track lookups for the taste vector (rebuilt lazily)
+    @Volatile
+    private var keyToTrackId: Map<String, Long>? = null
+
+    @Volatile
+    private var titleToTrackIds: Map<String, List<Long>>? = null
+
     private fun getCache(): Set<String> {
         embeddedTracksCache?.let { return it }
         synchronized(this) {
@@ -41,6 +48,24 @@ class SemanticSearchRepository(boxStore: BoxStore) {
             }
             embeddedTracksCache = cache
             return cache
+        }
+    }
+
+    private fun ensureLookupCaches() {
+        if (keyToTrackId != null && titleToTrackIds != null) return
+        synchronized(this) {
+            if (keyToTrackId != null && titleToTrackIds != null) return
+            val byKey = HashMap<String, Long>()
+            val byTitle = HashMap<String, MutableList<Long>>()
+            for (track in trackBox.all) {
+                val t = normalizeKey(track.title ?: "")
+                if (t.isEmpty()) continue
+                val a = normalizeKey(track.artist ?: "")
+                byKey.putIfAbsent("$t|$a", track.id)
+                byTitle.getOrPut(t) { mutableListOf() }.add(track.id)
+            }
+            keyToTrackId = byKey
+            titleToTrackIds = byTitle
         }
     }
 
@@ -59,6 +84,8 @@ class SemanticSearchRepository(boxStore: BoxStore) {
 
     fun invalidateCache() {
         embeddedTracksCache = null
+        keyToTrackId = null
+        titleToTrackIds = null
     }
 
     fun updateDevicePath(track: TrackEntity, devicePath: String) {
@@ -122,6 +149,9 @@ class SemanticSearchRepository(boxStore: BoxStore) {
         // This will save both Track and Chunks because of the relation
         track.chunks.addAll(chunksToInsert)
         trackBox.put(track)
+
+        // The lookup caches are stale now
+        invalidateCache()
     }
 
     /**
@@ -278,20 +308,44 @@ class SemanticSearchRepository(boxStore: BoxStore) {
         return dotProduct
     }
 
-    /** Mean embedding of a track looked up by metadata (used for the taste vector) */
+    /**
+     * Mean embedding of a track looked up by metadata (used for the taste vector).
+     *
+     * Matching is deliberately conservative:
+     * 1. exact normalized "title|artist" key,
+     * 2. unique title — safe even when artist tags differ between sources,
+     * 3. ambiguous title (covers!) — requires a partial artist match.
+     * It NEVER falls back to an arbitrary candidate: a wrong embedding silently
+     * poisons the taste vector, which is worse than having no embedding at all.
+     */
     fun findTrackEmbedding(title: String, artist: String): FloatArray? {
+        ensureLookupCaches()
         val tKey = normalizeKey(title)
+        if (tKey.isEmpty()) return null
         val aKey = normalizeKey(artist)
-        
-        val candidates = trackBox.query(
-            TrackEntity_.title.equal(title, QueryBuilder.StringOrder.CASE_INSENSITIVE)
-        ).build().use { it.find() }
-        
-        if (candidates.isEmpty()) return null
-        
-        return (candidates.firstOrNull { 
-            normalizeKey(it.title ?: "") == tKey && normalizeKey(it.artist ?: "") == aKey 
-        } ?: candidates.first()).meanEmbedding
+
+        // 1. Exact normalized title+artist match
+        keyToTrackId?.get("$tKey|$aKey")?.let { id ->
+            return trackBox.get(id)?.meanEmbedding
+        }
+
+        val candidateIds = titleToTrackIds?.get(tKey) ?: return null
+
+        // 2. Only one track has this title → unambiguous
+        if (candidateIds.size == 1) {
+            return trackBox.get(candidateIds.first())?.meanEmbedding
+        }
+
+        // 3. Several tracks share the title → require a partial artist match
+        if (aKey.isEmpty()) return null
+        for (id in candidateIds) {
+            val track = trackBox.get(id) ?: continue
+            val ta = normalizeKey(track.artist ?: "")
+            if (ta.isNotEmpty() && (ta.contains(aKey) || aKey.contains(ta))) {
+                return track.meanEmbedding
+            }
+        }
+        return null
     }
 
     /** Direct search by vector — the core of Daily Mix */
