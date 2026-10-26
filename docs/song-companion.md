@@ -5,7 +5,7 @@ Implemented on top of `feature/embedded-lyrics-manager` (`21d7766`), which alrea
 ## Use
 
 1. Open **Settings → Song Companion**. Configure the existing **AI Provider** (OpenAI-compatible base URL/model/key), enable a non-Off AI mode, and explicitly allow sending context. Choose an explanation/translation language (default: Persian).
-2. Open lyrics and tap **✦ Song Companion**. The dossier has **Story / Meaning / Translation / Line notes / Chat** tabs. Reading saved content does not contact the model.
+2. Open the player lyrics view and switch **Lyrics ↔ About this song**. Meaning, sourced story, draft review/apply and saved correction chat are now inline, without leaving the player. **Versions, manual editor & full chat** opens the advanced dossier with Story / Meaning / Translation / Line notes / Chat tabs. Reading saved content does not contact the model.
 3. **Story:** add references first. Optional Wikipedia search returns up to three excerpts; inspect one before adding it. Or enter a reference title, HTTPS URL and a supporting excerpt yourself. This does not fetch arbitrary websites and does not scrape Genius. There is no general web-search service built in.
 4. **Generate draft** saves a durable preview. **Apply to saved dossier** accepts it; older accepted versions are kept under **Version history**, with **Restore as a new version**. **Edit manually** works offline and creates a user-origin version.
 5. **Translation:** Apply a translation to show it beneath its original lyric lines in the player. Display modes in settings: original, bilingual, translation-only (falls back to original where unavailable). Timing, highlighting, blur and tap-to-seek remain tied to the original line.

@@ -6,11 +6,15 @@ Open **Settings → Lyrics Manager**. This feature searches for missing lyrics a
 
 1. Keep a separate backup of your music before a large batch.
 2. Grant **write access** by choosing the same music folder used by the library. The existing library tree permission may be read-only. No all-files permission is requested.
-3. Choose **Scan & find missing lyrics**. This step only reads the files and performs network lookups; it does not modify music.
-4. Review the matched recording's title, artist, album and duration. Embed individual matches, or confirm the batch of ready matches.
-5. Stop playback of a song before embedding it. Loaded songs are left ready for a later retry.
+3. The manager performs a **local-only inventory** on entry. **Rescan locally** refreshes it; neither action contacts a provider. Existing embedded lyrics and available sidecar `.lrc` files are preserved and are not searched online. Read errors are shown as errors, not falsely classified as missing lyrics.
+4. Filter by title/artist/album, an optional album filter, and Missing / Ready / Errors / All. Tick individual checkboxes or **Select visible**. The selected count explicitly includes hidden selected rows.
+5. Choose **Search N selected**, or **Search this song**. Search is separate from scanning and writing. Review the actual matched lyric text and recording metadata, then **Embed N** selected ready matches or **Embed this song**. No unselected file is written.
+6. For one track, use its menu → **Find missing lyrics**, or **Find lyrics** in the player. For an album, use the album menu → **Find missing lyrics · album**. These routes scan only their own scope and preselect missing tracks, but never start an online search automatically.
+7. A track currently loaded in the player is skipped for safe writing. Play a different track before retrying that file.
 
-The manager keeps session progress while navigating within the running app. It is not a persistent background worker and does not resume network searches after process death. Stop cancels searches; an in-progress file operation finishes safely before stopping. Failed/no-match results can be retried by scanning again.
+**Provider & access** holds the advanced base URL/public app ID settings and folder write permission. Keep a separate backup before a batch. Timed lyrics still embed as LRC text in the original lyrics field, not as a new sidecar.
+
+The manager keeps session progress while navigating within the running app. It is not a persistent background worker and does not resume a queue after process death. Stop cancels searches/countdowns; an in-progress file write finishes safely first. Completed search results are cached across restarts: positive matches for seven days, no-match results for six hours. **Refresh selected online** ignores the result cache but never bypasses the provider cooldown. The cache is limited to 1,000 entries / 20 MB in app cache storage, so Android can evict it.
 
 ## Provider configuration
 
@@ -23,7 +27,9 @@ The client calls:
 
 Responses use LRCLIB's `trackName`, `artistName`, `albumName`, `duration`, `instrumental`, `syncedLyrics` and `plainLyrics` fields. No API key is required for the default provider. APIs with different authentication, endpoints or response schemas need a separate adapter; changing the URL alone will not make them compatible.
 
-Searching sends track metadata (not the audio) to the configured server. Requests identify Symphony, run sequentially, and are throttled. HTTP 429/503 stops the batch and establishes a cooldown honoring `Retry-After`. Instrumentals and uncertain matches are not written.
+Searching sends track metadata (not the audio) to the configured server. Requests identify Symphony and run one at a time, with at least 1.5 seconds **after the previous response** before the next request. HTTP 429/503 establishes a cooldown honoring `Retry-After` plus positive jitter. The UI counts down and retries the current song once; a second throttle pauses the remaining queue for explicit retry. Cooldown deadlines are persisted per provider root, so restarting/retrying does not bypass them. Failed/time-out/rate-limited responses are never cached as "no lyrics". Instrumentals and uncertain matches are not written.
+
+LRCLIB remains the free default with both synchronized and plain lyrics, but coverage is not guaranteed and limits still apply to shared IPs/VPNs. The current [official documentation](https://lrclib.net/docs) distinguishes anonymous access from registered applications. An optional registered **public** `Lrclib-App-Id` can be entered; the header is only sent to `lrclib.net`. This is not a server API key. Do not embed server-side secrets in the app, invent an app ID or rotate hosts/identities to evade rate limits.
 
 Automatic matching requires a normalized title and artist match and a duration difference of at most three seconds. Live/remix qualifiers are not stripped. Synchronized matches are preferred; a plain exact lookup still triggers a search for a synchronized match before using plain lyrics.
 

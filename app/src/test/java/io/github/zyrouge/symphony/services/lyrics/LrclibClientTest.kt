@@ -19,7 +19,7 @@ class LrclibClientTest {
             Response.Builder().request(chain.request()).protocol(Protocol.HTTP_1_1)
                 .code(code).message("Test").header("Retry-After", "2")
                 .body(text.toResponseBody("application/json".toMediaType())).build()
-        }.build())
+        }.build(), LyricsRequestGate(spacingMs = 0))
     }
     @Test fun `base URL is normalized without duplicate api prefix`() {
         assertEquals("https://example.com/proxy", LrclibClient.normalizeBaseUrl("https://example.com/proxy/api/"))
@@ -58,4 +58,28 @@ class LrclibClientTest {
         assertEquals(2000, exception.retryAfterMs)
         assertEquals(1, requests.size)
     }
+    @Test fun `public app ID is used only with the official LRCLIB host`() = runBlocking {
+        val official = mutableListOf<Request>()
+        client(listOf(200 to synced), official).find("https://lrclib.net", track, "public-test-app")
+        assertEquals("public-test-app", official.single().header("Lrclib-App-Id"))
+        val custom = mutableListOf<Request>()
+        client(listOf(200 to synced), custom).find("https://example.com", track, "public-test-app")
+        assertNull(custom.single().header("Lrclib-App-Id"))
+    }
+    @Test fun `invalid app ID is rejected without a network request`() {
+        val requests = mutableListOf<Request>()
+        assertThrows(IllegalArgumentException::class.java) {
+            runBlocking { client(emptyList(), requests).find("https://lrclib.net", track, "invalid\nheader") }
+        }
+        assertTrue(requests.isEmpty())
+    }
+    @Test fun `edge HTML rate limit is handled by status not JSON parsing`() {
+        val requests = mutableListOf<Request>()
+        val c = client(listOf(429 to "<html>Too many requests</html>"), requests)
+        val exception = assertThrows(LyricsApiException::class.java) { runBlocking { c.find("https://lrclib.net", track) } }
+        assertEquals(429, exception.code)
+        assertTrue(c.gate.cooldownUntil >= System.currentTimeMillis() + 1500)
+        assertEquals(1, requests.size)
+    }
+
 }

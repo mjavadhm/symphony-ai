@@ -246,6 +246,13 @@ fun SongDropdownMenu(
         onDismissRequest = onDismissRequest
     ) {
         DropdownMenuItem(
+            text = { Text("Find missing lyrics") },
+            onClick = {
+                onDismissRequest()
+                context.navController.navigate(io.github.zyrouge.symphony.ui.view.settings.LyricsSettingsViewRoute(songId = song.id))
+            },
+        )
+        DropdownMenuItem(
             leadingIcon = {
                 Icon(Icons.Filled.Favorite, null)
             },

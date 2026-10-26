@@ -112,25 +112,10 @@ fun LyricsView(context: ViewContext) {
                                     .padding(contentPadding)
                                     .fillMaxSize(),
                             ) {
-                                // The lyrics area, with a gradient fade along the top and bottom edges
+                                // Controls stay opaque; LyricsText fades only the scrolling lyric content.
                                 Box(
                                     modifier = Modifier
                                         .weight(1f)
-                                        .graphicsLayer {
-                                            compositingStrategy = CompositingStrategy.Offscreen
-                                        }
-                                        .drawWithContent {
-                                            drawContent()
-                                            drawRect(
-                                                brush = Brush.verticalGradient(
-                                                    0f to Color.Transparent,
-                                                    0.07f to Color.Black,
-                                                    0.93f to Color.Black,
-                                                    1f to Color.Transparent,
-                                                ),
-                                                blendMode = BlendMode.DstIn,
-                                            )
-                                        }
                                 ) {
                                     LyricsText(
                                         context,

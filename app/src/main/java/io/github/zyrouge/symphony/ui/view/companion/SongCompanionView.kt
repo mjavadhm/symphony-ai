@@ -168,7 +168,7 @@ private fun CompanionDossier(context: ViewContext, id: String, initialLine: Stri
 }
 
 @Composable
-private fun RevisionCard(service: SongCompanion, revision: CompanionRevision, current: CompanionSnapshot, sources: List<CompanionSource>, busy: Boolean) {
+internal fun RevisionCard(service: SongCompanion, revision: CompanionRevision, current: CompanionSnapshot, sources: List<CompanionSource>, busy: Boolean) {
     val section = CompanionSection.valueOf(revision.section)
     val snapshot = remember(revision.snapshot) { CompanionCore.decodeSnapshot(revision.snapshot) }
     val stale = snapshot.hash != current.hash
@@ -226,7 +226,7 @@ private fun PayloadEditor(service: SongCompanion, id: String, section: Companion
 }
 
 @Composable
-private fun ReferenceDialog(service: SongCompanion, profile: CompanionTrack, sources: List<CompanionSource>, dismiss: () -> Unit) {
+internal fun ReferenceDialog(service: SongCompanion, profile: CompanionTrack, sources: List<CompanionSource>, dismiss: () -> Unit) {
     val scope = rememberCoroutineScope()
     var title by remember { mutableStateOf("") }; var url by remember { mutableStateOf("") }; var excerpt by remember { mutableStateOf("") }
     var results by remember { mutableStateOf<List<CompanionReference>>(emptyList()) }

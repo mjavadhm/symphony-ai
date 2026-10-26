@@ -119,7 +119,7 @@ fun BaseView(symphony: Symphony, activity: MainActivity) {
                     PlayerSettingsView(context)
                 }
                 baseComposable<io.github.zyrouge.symphony.ui.view.settings.LyricsSettingsViewRoute> {
-                    io.github.zyrouge.symphony.ui.view.settings.LyricsSettingsView(context)
+                    io.github.zyrouge.symphony.ui.view.settings.LyricsSettingsView(context, it.toRoute())
                 }
                 baseComposable<SemanticSearchSettingsViewRoute> {
                     SemanticSearchSettingsView(context)

@@ -131,16 +131,22 @@ class SongRepository(private val symphony: Symphony) {
         fallback = Assets.getPlaceholderId(symphony),
     )
 
+    /** Read-only sidecar lookup, also used by the offline missing-lyrics inventory. */
+    fun getSidecarLyrics(song: Song): String? {
+        val lrcPath = SimplePath(song.path).let {
+            it.parent?.join(it.nameWithoutExtension + ".lrc")?.pathString
+        }
+        symphony.groove.exposer.uris[lrcPath]?.let { uri ->
+            symphony.applicationContext.contentResolver.openInputStream(uri)?.use {
+                return String(it.readBytes()).takeIf(String::isNotBlank)
+            }
+        }
+        return null
+    }
+
     suspend fun getLyrics(song: Song): String? {
         try {
-            val lrcPath = SimplePath(song.path).let {
-                it.parent?.join(it.nameWithoutExtension + ".lrc")?.pathString
-            }
-            symphony.groove.exposer.uris[lrcPath]?.let { uri ->
-                symphony.applicationContext.contentResolver.openInputStream(uri)?.use {
-                    return String(it.readBytes())
-                }
-            }
+            getSidecarLyrics(song)?.let { return it }
             symphony.database.lyricsCache.get(song.id)?.takeIf { it.isNotBlank() }?.let { return it }
             // Also handle lyrics embedded since the last library scan.
             return symphony.applicationContext.contentResolver.openFileDescriptor(song.uri, "r")?.use { descriptor ->

@@ -3,168 +3,186 @@ package io.github.zyrouge.symphony.ui.view.settings
 import android.content.Intent
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
-import io.github.zyrouge.symphony.services.lyrics.EmbeddedLyricsStore
-import io.github.zyrouge.symphony.services.lyrics.LrclibClient
-import io.github.zyrouge.symphony.services.lyrics.LyricsManager
+import io.github.zyrouge.symphony.services.lyrics.*
 import io.github.zyrouge.symphony.ui.components.GlassSettingsScaffold
-import io.github.zyrouge.symphony.ui.components.GlassSurface
 import io.github.zyrouge.symphony.ui.helpers.ViewContext
 import kotlinx.serialization.Serializable
 
 @Serializable
-object LyricsSettingsViewRoute
+data class LyricsSettingsViewRoute(val songId: String = "", val albumId: String = "")
 
 @Composable
-fun LyricsSettingsView(context: ViewContext) {
+fun LyricsSettingsView(context: ViewContext, route: LyricsSettingsViewRoute = LyricsSettingsViewRoute()) {
     val manager = context.symphony.lyricsManager
     val state by manager.state.collectAsState()
-    var baseUrl by remember { mutableStateOf(manager.baseUrl) }
+    val scopeKey = if (route.songId.isNotEmpty()) "song:${route.songId}" else if (route.albumId.isNotEmpty()) "album:${route.albumId}" else "library"
+    val scopedIds = remember(route) {
+        when {
+            route.songId.isNotEmpty() -> setOf(route.songId)
+            route.albumId.isNotEmpty() -> context.symphony.groove.album.get(route.albumId)?.getSongIds(context.symphony)?.toSet().orEmpty()
+            else -> null
+        }
+    }
+    var query by rememberSaveable(route) { mutableStateOf("") }
+    var albumQuery by rememberSaveable(route) { mutableStateOf("") }
+    var filter by rememberSaveable(route) { mutableStateOf("Missing") }
+    var selected by rememberSaveable(route) { mutableStateOf(listOf<String>()) }
+    var provider by remember { mutableStateOf(false) }
     var message by remember { mutableStateOf("") }
-    var query by remember { mutableStateOf("") }
-    var onlyActionable by remember { mutableStateOf(true) }
     var confirmIds by remember { mutableStateOf<Set<String>?>(null) }
     var preview by remember { mutableStateOf<LyricsManager.Item?>(null) }
     var recovery by remember { mutableStateOf<EmbeddedLyricsStore.Recovery?>(null) }
-    val folderPicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocumentTree()) { uri ->
-        if (uri != null) {
-            message = runCatching {
-                context.activity.contentResolver.takePersistableUriPermission(
-                    uri, Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION,
-                )
-                "Folder access saved. Retry embedding the matches in this folder."
-            }.getOrElse { "Write access was not granted: ${it.message}" }
-        }
+    val inventory = if (state.scopeKey == scopeKey) state.items else emptyList()
+    val visible = inventory.filter { item ->
+        (when (filter) {
+            "Missing" -> item.missing
+            "Ready" -> item.status == LyricsManager.Status.READY
+            "Errors" -> item.status == LyricsManager.Status.FAILED
+            else -> true
+        }) && (query.isBlank() || item.song.title.contains(query, true) || item.song.artists.any { it.contains(query, true) } || item.song.album.orEmpty().contains(query, true)) &&
+            (albumQuery.isBlank() || item.song.album.orEmpty().contains(albumQuery, true))
     }
-    val readyIds = state.items.filter { it.status == LyricsManager.Status.READY }.map { it.song.id }.toSet()
-    GlassSettingsScaffold(context, title = "Lyrics Manager") { padding ->
-        LazyColumn(
-            modifier = Modifier.fillMaxSize().padding(padding),
-            contentPadding = PaddingValues(14.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp),
-        ) {
+    val selectedItems = inventory.filter { it.song.id in selected }
+    val searchIds = selectedItems.filter { it.missing && it.status != LyricsManager.Status.READY }.map { it.song.id }.toSet()
+    val readyIds = selectedItems.filter { it.status == LyricsManager.Status.READY }.map { it.song.id }.toSet()
+    fun scan() { selected = emptyList(); manager.scan(scopedIds, scopeKey) }
+    LaunchedEffect(scopeKey) {
+        if (!state.busy && state.recoveries.isEmpty() && (state.scopeKey != scopeKey || !state.scanned)) scan()
+    }
+    LaunchedEffect(scopeKey, state.scopeKey, state.scanned) {
+        if (state.scopeKey == scopeKey && state.scanned && scopedIds != null) selected = inventory.filter { it.missing }.map { it.song.id }
+    }
+    val folderPicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocumentTree()) { uri ->
+        if (uri != null) message = runCatching {
+            context.activity.contentResolver.takePersistableUriPermission(uri, Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION)
+            "Folder access saved. Retry embedding."
+        }.getOrElse { "Write access was not granted: ${it.message}" }
+    }
+    GlassSettingsScaffold(context, title = if (route.songId.isNotEmpty()) "Lyrics · this song" else if (route.albumId.isNotEmpty()) "Lyrics · this album" else "Missing lyrics") { padding ->
+        LazyColumn(Modifier.fillMaxSize().padding(padding), contentPadding = PaddingValues(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
             item {
-                GlassSurface(modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(24.dp)) {
-                    Column(Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                        Text("Find & embed missing lyrics", style = MaterialTheme.typography.titleMedium)
-                        Text("Synchronized lyrics first; plain text if unavailable. Existing embedded lyrics are never replaced. " +
-                            "Supported: MP3, FLAC, M4A/M4B, OGG and Opus. No audio re-encoding.")
-                        Text("Timed lyrics are stored as LRC text inside the lyrics tag, not as a separate file. " +
-                            "Other players may display the timestamps instead of synchronizing them.",
-                            style = MaterialTheme.typography.bodySmall)
-                        OutlinedTextField(
-                            value = baseUrl, onValueChange = { baseUrl = it },
-                            label = { Text("LRCLIB-compatible Base URL") },
-                            placeholder = { Text(LrclibClient.DEFAULT_BASE_URL) },
-                            enabled = !state.busy, singleLine = true, modifier = Modifier.fillMaxWidth(),
-                        )
-                        Text("Use the service root (or /api). This is not compatible with arbitrary lyrics APIs. " +
-                            "Searching sends song title, artist, album and duration to this server.",
-                            style = MaterialTheme.typography.bodySmall)
-                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                            OutlinedButton(enabled = !state.busy, onClick = {
-                                message = runCatching { manager.baseUrl = baseUrl; baseUrl = manager.baseUrl; "Provider saved" }
-                                    .getOrElse { it.message ?: "Invalid URL" }
-                            }) { Text("Save URL") }
-                            TextButton(enabled = !state.busy, onClick = {
-                                manager.baseUrl = LrclibClient.DEFAULT_BASE_URL
-                                baseUrl = manager.baseUrl
-                            }) { Text("Reset") }
-                        }
-                        OutlinedButton(enabled = !state.busy, onClick = {
-                            folderPicker.launch(context.symphony.settings.mediaFolders.value.firstOrNull())
-                        }) { Text("Grant music-folder write access") }
-                        Text("Choose the same music folder used by your library. Stop the current song before embedding it. " +
-                            "Keep an independent backup of your music before a large batch.", style = MaterialTheme.typography.bodySmall)
-                        Button(enabled = !state.busy && state.recoveries.isEmpty(), onClick = {
-                            message = runCatching {
-                                manager.baseUrl = baseUrl
-                                manager.scan()
-                                ""
-                            }.getOrElse { it.message ?: "Invalid provider URL" }
-                        }) { Text("Scan & find missing lyrics") }
-                        if (state.busy) {
-                            LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
-                            OutlinedButton(onClick = manager::stop) { Text("Stop after safe file operation") }
-                        } else if (readyIds.isNotEmpty()) {
-                            Button(onClick = { confirmIds = readyIds }) { Text("Embed ${readyIds.size} matches") }
-                        }
-                        if (state.progress.isNotBlank()) Text(state.progress)
-                        if (message.isNotBlank()) Text(message, color = MaterialTheme.colorScheme.primary)
-                        Text("${state.items.count { it.status == LyricsManager.Status.EMBEDDED }} embedded · " +
-                            "${readyIds.size} ready · ${state.items.count { it.status == LyricsManager.Status.NOT_FOUND }} not found")
-                    }
+                Text("1. Scan locally → 2. Select & search → 3. Review & embed", style = MaterialTheme.typography.titleSmall)
+                Text("Opening this page only checks files on your device. Nothing is sent online until you choose Search.", style = MaterialTheme.typography.bodySmall)
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    OutlinedButton(enabled = !state.busy && state.recoveries.isEmpty(), onClick = ::scan) { Text("Rescan locally") }
+                    TextButton(enabled = !state.busy, onClick = { provider = true }) { Text("Provider & access") }
                 }
+                if (state.busy) {
+                    LinearProgressIndicator(Modifier.fillMaxWidth())
+                    TextButton(onClick = manager::stop) { Text("Stop safely") }
+                }
+                if (state.progress.isNotBlank()) Text(state.progress)
+                if (state.cooldownUntil > System.currentTimeMillis()) Text("Provider cooldown until ${java.text.DateFormat.getTimeInstance().format(java.util.Date(state.cooldownUntil))}. Local scan and filtering still work.")
+                if (state.scopeKey != scopeKey && state.busy) Text("Another scope is busy. Stop it or wait, then tap Rescan locally.")
+                if (message.isNotBlank()) Text(message)
+                Text("${inventory.count { it.missing }} missing · ${inventory.count { it.status == LyricsManager.Status.READY }} ready · ${inventory.count { it.status == LyricsManager.Status.EMBEDDED }} embedded")
             }
             items(state.recoveries, key = { "recovery:${it.directory.name}" }) { entry ->
-                Card(Modifier.fillMaxWidth()) {
-                    Column(Modifier.padding(16.dp)) {
-                        Text("Recovery backup: ${entry.name}", color = MaterialTheme.colorScheme.error)
-                        Text("A previous write may have been interrupted. Restore before continuing.")
-                        TextButton(enabled = !state.busy, onClick = { recovery = entry }) { Text("Restore original") }
-                    }
-                }
+                Card { Column(Modifier.padding(12.dp)) {
+                    Text("Interrupted write: ${entry.name}", color = MaterialTheme.colorScheme.error)
+                    TextButton(enabled = !state.busy, onClick = { recovery = entry }) { Text("Restore original before continuing") }
+                } }
             }
             item {
-                OutlinedTextField(value = query, onValueChange = { query = it }, label = { Text("Filter songs") },
-                    singleLine = true, modifier = Modifier.fillMaxWidth())
-                Row {
-                    Checkbox(checked = onlyActionable, onCheckedChange = { onlyActionable = it })
-                    Text("Hide songs that already had lyrics", modifier = Modifier.padding(top = 14.dp))
+                OutlinedTextField(query, { query = it }, Modifier.fillMaxWidth(), label = { Text("Filter title / artist / album") }, singleLine = true)
+                OutlinedTextField(albumQuery, { albumQuery = it }, Modifier.fillMaxWidth(), label = { Text("Album filter (optional)") }, singleLine = true)
+                Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    listOf("Missing", "Ready", "Errors", "All").forEach { label -> FilterChip(selected = filter == label, onClick = { filter = label }, label = { Text(label) }) }
                 }
+                Row {
+                    TextButton(enabled = !state.busy, onClick = { selected = (selected + visible.filter { it.missing }.map { it.song.id }).distinct() }) { Text("Select visible") }
+                    TextButton(enabled = !state.busy, onClick = { selected = selected.filterNot { id -> visible.any { it.song.id == id } } }) { Text("Deselect visible") }
+                }
+                Text("${selectedItems.size} selected (including hidden rows)", style = MaterialTheme.typography.bodySmall)
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Button(enabled = !state.busy && searchIds.isNotEmpty() && state.recoveries.isEmpty(), onClick = { manager.search(searchIds) }) { Text("Search ${searchIds.size} selected") }
+                    OutlinedButton(enabled = !state.busy && readyIds.isNotEmpty() && state.recoveries.isEmpty(), onClick = { confirmIds = readyIds }) { Text("Embed ${readyIds.size}") }
+                }
+                TextButton(enabled = !state.busy && selectedItems.any { it.missing } && state.recoveries.isEmpty(), onClick = {
+                    manager.search(selectedItems.filter { it.missing }.map { it.song.id }.toSet(), refresh = true)
+                }) { Text("Refresh selected online (ignore result cache)") }
+                if (state.scanned && visible.isEmpty()) Text("No songs match this filter. Try All or clear the filters.")
             }
-            items(state.items.filter {
-                (!onlyActionable || it.status != LyricsManager.Status.EXISTING) &&
-                    (query.isBlank() || it.song.title.contains(query, true) || it.song.artists.any { a -> a.contains(query, true) })
-            }, key = { it.song.id }) { item ->
-                GlassSurface(modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(18.dp)) {
-                    Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                        Text(item.song.title, style = MaterialTheme.typography.titleSmall)
-                        Text(item.song.artists.joinToString(), style = MaterialTheme.typography.bodySmall)
-                        Text(when (item.status) {
-                            LyricsManager.Status.READY -> if (item.candidate?.synced == true) "Ready · synchronized LRC" else "Ready · plain lyrics"
-                            LyricsManager.Status.EXISTING -> "Already has embedded lyrics · preserved"
-                            LyricsManager.Status.EMBEDDED -> "Embedded & verified"
-                            LyricsManager.Status.NOT_FOUND -> "No confident match found"
-                            else -> item.status.name.lowercase().replaceFirstChar { it.uppercase() }
-                        })
-                        if (item.message.isNotBlank()) Text(item.message, color = MaterialTheme.colorScheme.error)
-                        if (item.status == LyricsManager.Status.READY) {
-                            Row {
-                                TextButton(onClick = { preview = item }) { Text("Review match") }
-                                TextButton(enabled = !state.busy, onClick = { confirmIds = setOf(item.song.id) }) { Text("Embed") }
-                            }
+            items(visible, key = { it.song.id }) { item ->
+                Card(Modifier.fillMaxWidth()) { Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    Row {
+                        Checkbox(checked = item.song.id in selected, enabled = !state.busy && item.missing,
+                            onCheckedChange = { checked -> selected = if (checked) (selected + item.song.id).distinct() else selected - item.song.id })
+                        Column(Modifier.weight(1f)) {
+                            Text(item.song.title, style = MaterialTheme.typography.titleSmall)
+                            Text(item.song.artists.joinToString(), style = MaterialTheme.typography.bodySmall)
+                            Text(item.song.album.orEmpty(), style = MaterialTheme.typography.bodySmall)
                         }
                     }
-                }
+                    Text(when (item.status) {
+                        LyricsManager.Status.MISSING -> "Missing lyrics · ready to search"
+                        LyricsManager.Status.EXISTING -> "Embedded lyrics already present · preserved"
+                        LyricsManager.Status.SIDECAR -> "Local .lrc already present · preserved"
+                        LyricsManager.Status.READY -> if (item.candidate?.synced == true) "Match ready · synchronized" else "Match ready · plain text"
+                        LyricsManager.Status.NOT_FOUND -> "No confident match found"
+                        LyricsManager.Status.EMBEDDED -> "Embedded & verified"
+                        else -> item.status.name.lowercase().replaceFirstChar { it.uppercase() }
+                    })
+                    if (item.message.isNotBlank()) Text(item.message)
+                    Row {
+                        if (item.missing && item.status != LyricsManager.Status.READY) TextButton(enabled = !state.busy && state.recoveries.isEmpty(), onClick = { manager.search(setOf(item.song.id)) }) { Text("Search this song") }
+                        if (item.status == LyricsManager.Status.READY) {
+                            TextButton(onClick = { preview = item }) { Text("Review lyrics") }
+                            TextButton(enabled = !state.busy && state.recoveries.isEmpty(), onClick = { confirmIds = setOf(item.song.id) }) { Text("Embed this song") }
+                        }
+                    }
+                } }
             }
         }
     }
-    confirmIds?.let { ids ->
-        AlertDialog(onDismissRequest = { confirmIds = null }, title = { Text("Modify ${ids.size} audio files?") },
-            text = { Text("The matched lyrics will be written inside the original songs. Existing lyrics, artwork and other tags " +
-                "will be preserved. A temporary backup is retained until each write is verified. Playback of the current song is skipped.") },
-            confirmButton = { TextButton(onClick = { confirmIds = null; manager.embed(ids) }) { Text("Embed lyrics") } },
-            dismissButton = { TextButton(onClick = { confirmIds = null }) { Text("Cancel") } })
+    if (provider) LyricsProviderDialog(manager, onFolder = { folderPicker.launch(context.symphony.settings.mediaFolders.value.firstOrNull()) }, dismiss = { provider = false })
+    confirmIds?.let { ids -> AlertDialog(onDismissRequest = { confirmIds = null }, title = { Text("Embed lyrics in ${ids.size} selected files?") },
+        text = { Text("Writes lyrics inside the original audio without re-encoding. Existing tags/artwork/lyrics are preserved and each write is backed up and verified. The currently loaded song is skipped; play a different song before retrying it. Keep an independent backup before a large batch.") },
+        confirmButton = { TextButton(onClick = { confirmIds = null; manager.embed(ids) }) { Text("Embed selected") } }, dismissButton = { TextButton(onClick = { confirmIds = null }) { Text("Cancel") } }) }
+    preview?.let { item -> val candidate = item.candidate!!
+        AlertDialog(onDismissRequest = { preview = null }, title = { Text("Review match") }, text = {
+            Column(Modifier.heightIn(max = 420.dp).verticalScroll(rememberScrollState())) {
+                Text("${candidate.record.trackName}\n${candidate.record.artistName}\n${candidate.record.albumName}\n${candidate.record.duration}s · ${if (candidate.synced) "Synchronized LRC" else "Plain lyrics"}\n")
+                Text(candidate.text.take(16000))
+                if (candidate.text.length > 16000) Text("Preview shortened; full matched text is used when embedding.")
+            }
+        }, confirmButton = { TextButton(onClick = { preview = null }) { Text("Close") } })
     }
-    preview?.let { item ->
-        val candidate = item.candidate!!
-        AlertDialog(onDismissRequest = { preview = null }, title = { Text("Matched recording") },
-            text = { Text("${candidate.record.trackName}\n${candidate.record.artistName}\n${candidate.record.albumName}\n" +
-                "Duration: ${candidate.record.duration}s\n" + if (candidate.synced) "Synchronized LRC" else "Plain lyrics") },
-            confirmButton = { TextButton(onClick = { preview = null }) { Text("Close") } })
-    }
-    recovery?.let { entry ->
-        AlertDialog(onDismissRequest = { recovery = null }, title = { Text("Restore original file?") },
-            text = { Text("Replace ${entry.name} with its verified backup. Stop playback first.") },
-            confirmButton = { TextButton(onClick = { recovery = null; manager.restore(entry) }) { Text("Restore") } },
-            dismissButton = { TextButton(onClick = { recovery = null }) { Text("Cancel") } })
-    }
+    recovery?.let { entry -> AlertDialog(onDismissRequest = { recovery = null }, title = { Text("Restore original file?") }, text = { Text("Replace ${entry.name} with its verified backup. Stop playback first.") },
+        confirmButton = { TextButton(onClick = { recovery = null; manager.restore(entry) }) { Text("Restore") } }, dismissButton = { TextButton(onClick = { recovery = null }) { Text("Cancel") } }) }
+}
+
+@Composable
+private fun LyricsProviderDialog(manager: LyricsManager, onFolder: () -> Unit, dismiss: () -> Unit) {
+    var base by remember { mutableStateOf(manager.baseUrl) }; var appId by remember { mutableStateOf(manager.publicAppId) }; var error by remember { mutableStateOf("") }
+    AlertDialog(onDismissRequest = dismiss, title = { Text("Lyrics provider & access") }, text = {
+        Column(Modifier.heightIn(max = 440.dp).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Text("Default: LRCLIB — free, no API key required, synchronized lyrics first, plain lyrics as fallback. Coverage varies; no free provider covers every recording.")
+            OutlinedTextField(base, { base = it }, label = { Text("LRCLIB-compatible Base URL") })
+            TextButton(onClick = { base = LrclibClient.DEFAULT_BASE_URL }) { Text("Use official LRCLIB") }
+            OutlinedTextField(appId, { appId = it }, label = { Text("Registered public LRCLIB app ID (optional)") })
+            Text("Leave blank for anonymous access. Only use a real public app ID registered with LRCLIB. Never enter a server API key here. Custom services must implement the LRCLIB API; this is not a universal lyrics API protocol.", style = MaterialTheme.typography.bodySmall)
+            Text("Search sends title, artist, album and duration. Requests are serial, spaced at least 1.5s after completion, cached, and paused for Retry-After. Shared IP/VPN limits can still apply.", style = MaterialTheme.typography.bodySmall)
+            Text("Timed lyrics are embedded as LRC text in the lyrics tag. Other players may show timestamps instead of synchronizing them.", style = MaterialTheme.typography.bodySmall)
+            OutlinedButton(onClick = onFolder) { Text("Grant music-folder write access") }
+            if (error.isNotBlank()) Text(error, color = MaterialTheme.colorScheme.error)
+        }
+    }, confirmButton = { TextButton(onClick = {
+        try {
+            val normalized = LrclibClient.normalizeBaseUrl(base)
+            val id = appId.trim(); require(id.length <= 200 && id.all { it.code in 33..126 }) { "Invalid public app ID" }
+            manager.baseUrl = normalized; manager.publicAppId = id; dismiss()
+        } catch (e: Exception) { error = e.message.orEmpty() }
+    }) { Text("Save") } }, dismissButton = { TextButton(onClick = dismiss) { Text("Close") } })
 }

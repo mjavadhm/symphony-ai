@@ -1,6 +1,5 @@
 package io.github.zyrouge.symphony.services.lyrics
 
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.serialization.json.*
 import okhttp3.*
@@ -17,7 +16,9 @@ class LyricsApiException(val code: Int, val retryAfterMs: Long = 0) : IOExceptio
 /** A configurable LRCLIB-compatible root URL, not a universal lyrics-provider protocol. */
 class LrclibClient(private val http: OkHttpClient = OkHttpClient.Builder()
     .connectTimeout(15, TimeUnit.SECONDS).readTimeout(25, TimeUnit.SECONDS)
-    .callTimeout(35, TimeUnit.SECONDS).followRedirects(false).build()) {
+    .callTimeout(35, TimeUnit.SECONDS).followRedirects(false).build(),
+    val gate: LyricsRequestGate = LyricsRequestGate(),
+) {
     companion object {
         const val DEFAULT_BASE_URL = "https://lrclib.net"
         fun normalizeBaseUrl(value: String): String {
@@ -38,9 +39,9 @@ class LrclibClient(private val http: OkHttpClient = OkHttpClient.Builder()
             plainLyrics = value["plainLyrics"]?.jsonPrimitive?.contentOrNull,
         )
     }
-    @Volatile private var nextRequestAt = 0L
 
-    suspend fun find(baseUrl: String, track: LyricsTrack): LyricsCandidate? {
+    suspend fun find(baseUrl: String, track: LyricsTrack, publicAppId: String = "", onWait: (Long) -> Unit = {}): LyricsCandidate? {
+        require(publicAppId.length <= 200 && publicAppId.all { it.code in 33..126 }) { "Invalid public app ID" }
         if (track.title.isBlank() || track.artists.none { it.isNotBlank() }) return null
         val root = normalizeBaseUrl(baseUrl).toHttpUrlOrNull()!!
         val exact = root.newBuilder().addPathSegments("api/get")
@@ -51,25 +52,24 @@ class LrclibClient(private val http: OkHttpClient = OkHttpClient.Builder()
                 if (track.durationSeconds in 1.0..3600.0) addQueryParameter("duration", track.durationSeconds.toString())
             }.build()
         val records = mutableListOf<LyricsRecord>()
-        get(exact)?.let { records += parseRecord(Json.parseToJsonElement(it).jsonObject) }
+        get(exact, publicAppId, onWait)?.let { records += parseRecord(Json.parseToJsonElement(it).jsonObject) }
         LyricsMatch.select(track, records)?.takeIf { it.synced }?.let { return it }
         // A plain exact result must not hide a synchronized result available in search.
         val search = root.newBuilder().addPathSegments("api/search")
             .addQueryParameter("track_name", track.title)
             .addQueryParameter("artist_name", track.artists.first()).build()
-        get(search)?.let { body ->
+        get(search, publicAppId, onWait)?.let { body ->
             records += Json.parseToJsonElement(body).jsonArray.take(20).map { parseRecord(it.jsonObject) }
         }
         return LyricsMatch.select(track, records)
     }
 
-    private suspend fun get(url: HttpUrl): String? {
-        delay((nextRequestAt - System.currentTimeMillis()).coerceAtLeast(0))
+    private suspend fun get(url: HttpUrl, publicAppId: String, onWait: (Long) -> Unit): String? = gate.request(onWait) {
         val request = Request.Builder().url(url)
             .header("User-Agent", "Symphony/2024.12.115 (https://github.com/mjavadhm/symphony-ai)")
-            .header("Accept", "application/json").build()
-        nextRequestAt = System.currentTimeMillis() + 500L
-        return suspendCancellableCoroutine { continuation ->
+            .header("Accept", "application/json")
+            .apply { if (publicAppId.isNotBlank() && url.host == "lrclib.net") header("Lrclib-App-Id", publicAppId) }.build()
+        suspendCancellableCoroutine { continuation ->
             val call = http.newCall(request)
             continuation.invokeOnCancellation { call.cancel() }
             call.enqueue(object : Callback {
@@ -89,8 +89,8 @@ class LrclibClient(private val http: OkHttpClient = OkHttpClient.Builder()
                                         }.getOrNull()
                                 } ?: 60_000L
                                 if (it.code == 429 || it.code == 503) {
-                                    // Stop the batch; a subsequent retry still respects the server's cooldown.
-                                    nextRequestAt = System.currentTimeMillis() + retry.coerceAtLeast(1000) + 500
+                                    // Defer every later request; the manager shows countdown and bounds retries.
+                                    gate.defer(retry)
                                 }
                                 throw LyricsApiException(it.code, retry)
                             }
@@ -103,7 +103,6 @@ class LrclibClient(private val http: OkHttpClient = OkHttpClient.Builder()
                             if (source.buffer.size > 2_000_000) throw IOException("Lyrics response is too large")
                             body.string()
                         }
-                        nextRequestAt = maxOf(nextRequestAt, System.currentTimeMillis() + 300L)
                         if (continuation.isActive) continuation.resume(body)
                     } catch (e: Exception) {
                         if (continuation.isActive) continuation.resumeWithException(e)

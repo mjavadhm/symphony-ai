@@ -249,7 +249,7 @@ fun SettingsView(context: ViewContext, route: SettingsViewRoute) {
                                 icon = { Icon(Icons.Filled.MusicNote, null) },
                                 title = { Text("Lyrics Manager") },
                                 onClick = {
-                                    context.navController.navigate(io.github.zyrouge.symphony.ui.view.settings.LyricsSettingsViewRoute)
+                                    context.navController.navigate(io.github.zyrouge.symphony.ui.view.settings.LyricsSettingsViewRoute())
                                 },
                             )
                             SettingsGlassDivider()
