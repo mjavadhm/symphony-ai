@@ -1,8 +1,6 @@
 package io.github.zyrouge.symphony.services.radio
 
 import io.github.zyrouge.symphony.Symphony
-import io.github.zyrouge.symphony.utils.Logger
-import kotlinx.coroutines.launch
 import kotlin.random.Random
 
 class RadioShorty(private val symphony: Symphony) {
@@ -66,38 +64,19 @@ class RadioShorty(private val symphony: Symphony) {
      * Clears the queue, plays the seed song, switches to Autoplay loop mode and
      * prefetches a first batch of similar songs so the upcoming queue is visible.
      */
-    fun startRadio(songId: String) {
-        symphony.radio.stop(ended = false)
-        symphony.radio.playbackSource = "radio:$songId"
-        symphony.radio.queue.add(songId)
-        symphony.radio.queue.setLoopMode(RadioQueue.LoopMode.Autoplay)
-        symphony.groove.coroutineScope.launch {
-            val next = try {
-                symphony.recommendation.getAutoplaySongs(
-                    seedSongIds = listOf(songId),
-                    excludeSongIds = setOf(songId),
-                    anchorSongId = songId,
-                )
-            } catch (err: Exception) {
-                Logger.error("RadioShorty", "start radio prefetch failed", err)
-                emptyList()
-            }
-            if (next.isNotEmpty()) {
-                // Appends without touching playback — the seed song keeps playing
-                symphony.radio.queue.add(next)
-            }
-        }
-    }
+    fun startRadio(songId: String) = symphony.radio.startSongRadio(songId)
 
     fun playQueue(
         songIds: List<String>,
         options: Radio.PlayOptions = Radio.PlayOptions(),
         shuffle: Boolean = false,
+        source: String = "queue",
     ) {
         symphony.radio.stop(ended = false)
         if (songIds.isEmpty()) {
             return
         }
+        symphony.radio.playbackSource = source
         symphony.radio.queue.add(
             songIds,
             options = options.run {
@@ -111,7 +90,8 @@ class RadioShorty(private val symphony: Symphony) {
         songId: String,
         options: Radio.PlayOptions = Radio.PlayOptions(),
         shuffle: Boolean = false,
-    ) = playQueue(listOf(songId), options = options, shuffle = shuffle)
+        source: String = "queue",
+    ) = playQueue(listOf(songId), options = options, shuffle = shuffle, source = source)
 
     fun playQueueSmart(songIds: List<String>) {
         symphony.radio.stop(ended = false)

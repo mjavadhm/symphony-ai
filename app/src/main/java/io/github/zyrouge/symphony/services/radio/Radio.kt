@@ -3,7 +3,11 @@ package io.github.zyrouge.symphony.services.radio
 import io.github.zyrouge.symphony.Symphony
 import io.github.zyrouge.symphony.utils.Eventer
 import io.github.zyrouge.symphony.utils.Logger
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CoroutineStart
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import java.time.Instant
 import java.util.Date
 import java.util.Timer
@@ -53,6 +57,7 @@ class Radio(private val symphony: Symphony) : Symphony.Hooks {
     private val nativeReceiver = RadioNativeReceiver(symphony)
     private var player: RadioPlayer? = null
     private var nextPlayer: RadioPlayer? = null
+    private val autoplaySession = AutoplaySession()
 
     val hasPlayer get() = player?.usable == true
     val isPlaying get() = player?.isPlaying == true
@@ -228,8 +233,11 @@ class Radio(private val symphony: Symphony) : Symphony.Hooks {
     }
 
     fun stop(ended: Boolean = true) {
+        val wasSongRadio = autoplaySession.reset()
         stopCurrentSong()
+        playbackSource = "queue"
         queue.reset()
+        if (wasSongRadio) queue.setLoopMode(RadioQueue.LoopMode.None)
         clearSleepTimer()
         persistedSpeed = RadioPlayer.DEFAULT_SPEED
         persistedPitch = RadioPlayer.DEFAULT_PITCH
@@ -330,6 +338,10 @@ class Radio(private val symphony: Symphony) : Symphony.Hooks {
             if (p.activelyPlayedMs >= 5_000) {
                 val playedMs = p.activelyPlayedMs
                 val song = symphony.groove.song.get(p.id)
+                // Snapshot before another queue/session changes these mutable values.
+                val source = playbackSource
+                val shuffled = queue.currentShuffleMode
+                val loopMode = queue.currentLoopMode.name
                 symphony.groove.coroutineScope.launch {
                     try {
                         val now = System.currentTimeMillis()
@@ -342,8 +354,8 @@ class Radio(private val symphony: Symphony) : Symphony.Hooks {
                             songId = p.id,
                             playedAt = now,
                             durationPlayed = playedMs,
-                            isShuffleMode = queue.currentShuffleMode,
-                            loopMode = queue.currentLoopMode.name,
+                            isShuffleMode = shuffled,
+                            loopMode = loopMode,
                             songDurationMs = songDurationMs,
                             completionRate = completion,
                             skipped = playedMs < 30_000 && completion < 0.5f,
@@ -353,7 +365,7 @@ class Radio(private val symphony: Symphony) : Symphony.Hooks {
                             artist = song?.artists?.joinToString() ?: "",
                             deviceId = io.github.zyrouge.symphony.utils.DeviceInfo.deviceId(symphony.applicationContext),
                             deviceName = io.github.zyrouge.symphony.utils.DeviceInfo.deviceName(),
-                            source = playbackSource,
+                            source = source,
                             audioOutput = currentAudioOutput(),
                         )
                         symphony.database.playbackHistory.insert(history)
@@ -398,36 +410,79 @@ class Radio(private val symphony: Symphony) : Symphony.Hooks {
         play(PlayOptions(nextSongIndex, autostart = autostart))
     }
 
-    fun extendQueueForAutoplay() {
-        val insertIndex = queue.currentSongIndex + 1
-        val hadPlayer = hasPlayer
-        // Song-radio mode: stay anchored to the seed song so the station keeps its identity
-        val anchorSongId = playbackSource
-            .takeIf { it.startsWith("radio:") }
-            ?.removePrefix("radio:")
-        symphony.groove.coroutineScope.launch {
-            val songIds = try {
-                symphony.recommendation.getAutoplaySongs(
-                    seedSongIds = queue.currentQueue.toList(),
-                    excludeSongIds = queue.currentQueue.toSet(),
-                    anchorSongId = anchorSongId,
-                )
-            } catch (err: Exception) {
-                Logger.error("Radio", "autoplay recommendation failed", err)
-                emptyList()
-            }
-            if (songIds.isEmpty()) {
-                // The engine isn't ready → keep the old behavior (go back to the start of the queue and stop)
-                if (!hadPlayer) {
-                    play(PlayOptions(index = 0, autostart = false))
+    internal fun startSongRadio(songId: String) {
+        if (symphony.groove.song.get(songId) == null) return
+        stop(ended = false)
+        autoplaySession.reset(anchorSongId = songId)
+        playbackSource = "radio:$songId"
+        queue.setShuffleMode(false)
+        queue.setLoopMode(RadioQueue.LoopMode.Autoplay)
+        queue.add(songId)
+        requestAutoplay(advance = false)
+    }
+
+    fun extendQueueForAutoplay() = requestAutoplay(advance = true)
+
+    private fun requestAutoplay(advance: Boolean) {
+        if (queue.currentLoopMode != RadioQueue.LoopMode.Autoplay || queue.isEmpty()) return
+        val request = autoplaySession.begin(
+            advanceFromIndex = if (advance) queue.currentSongIndex else null,
+        ) ?: return
+        val seedSongIds = queue.currentQueue.toList()
+        // Lazy start lets reset cancel the job even before it is dispatched.
+        val job = symphony.groove.coroutineScope.launch(
+            context = Dispatchers.Main.immediate,
+            start = CoroutineStart.LAZY,
+        ) {
+            try {
+                val songIds = try {
+                    withContext(Dispatchers.Default) {
+                        symphony.recommendation.getAutoplaySongs(
+                            seedSongIds = seedSongIds,
+                            excludeSongIds = seedSongIds.toSet(),
+                            anchorSongId = request.anchorSongId,
+                        )
+                    }
+                } catch (err: CancellationException) {
+                    throw err
+                } catch (err: Exception) {
+                    Logger.error("Radio", "autoplay recommendation failed", err)
+                    emptyList()
                 }
-                return@launch
-            }
-            queue.add(songIds, options = PlayOptions(index = insertIndex))
-            if (hadPlayer) {
-                play(PlayOptions(index = insertIndex))
+                autoplaySession.complete(request) { advanceFromIndex ->
+                    if (queue.currentLoopMode != RadioQueue.LoopMode.Autoplay || queue.isEmpty()) {
+                        return@complete
+                    }
+                    // The queue may have been edited while recommendations were loading.
+                    val existing = queue.currentQueue.toSet()
+                    val fresh = songIds.distinct().filter {
+                        it !in existing && symphony.groove.song.get(it) != null
+                    }
+                    val shouldAdvance = advanceFromIndex != null &&
+                        queue.currentSongIndex == advanceFromIndex
+                    if (fresh.isEmpty()) {
+                        if (shouldAdvance && !hasPlayer) {
+                            play(PlayOptions(index = 0, autostart = false))
+                        }
+                        return@complete
+                    }
+                    val insertIndex = queue.currentSongIndex + 1
+                    val hadPlayer = hasPlayer
+                    queue.add(
+                        fresh,
+                        options = PlayOptions(
+                            index = if (shouldAdvance) insertIndex else queue.currentSongIndex,
+                            autostart = shouldAdvance,
+                        ),
+                    )
+                    if (shouldAdvance && hadPlayer) play(PlayOptions(index = insertIndex))
+                }
+            } finally {
+                autoplaySession.abandon(request)
             }
         }
+        autoplaySession.onCancel(request) { job.cancel() }
+        job.start()
     }
 
     private fun getNextSong(source: SongFinishSource): Pair<Int, Boolean> {
