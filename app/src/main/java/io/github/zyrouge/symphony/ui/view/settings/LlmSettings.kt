@@ -180,6 +180,7 @@ fun LlmSettingsView(context: ViewContext) {
 
                 }
             }
+            io.github.zyrouge.symphony.ui.view.companion.StoryPromptEditor(llm)
             GlassSurface(
                 modifier = Modifier.fillMaxWidth(),
                 shape = RoundedCornerShape(28.dp),

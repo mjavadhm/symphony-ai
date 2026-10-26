@@ -48,6 +48,26 @@ class CompanionRevisionTest {
         assertEquals("saved", dao.revision(fa)!!.state)
         assertEquals("saved", dao.revision(en)!!.state)
     }
+    @Test fun `discard keeps history and never replaces saved content`() = runBlocking {
+        val dao = dao(); val first = draft(dao); dao.apply(first)
+        val second = draft(dao, first); dao.discard(second)
+        assertEquals("discarded", dao.revision(second)!!.state)
+        assertEquals(first, dao.saved("track", "MEANING", "", "فارسی")!!.id)
+        assertThrows(IllegalArgumentException::class.java) { runBlocking { dao.apply(second) } }
+    }
+    @Test fun `keeping a preview does not reveal an older draft in the player`() = runBlocking {
+        val dao = dao(); draft(dao); val latest = draft(dao)
+        assertEquals(latest, CompanionRevisionPolicy.playerDraft(dao.revisionList("track"))!!.id)
+        dao.apply(latest)
+        assertNull(CompanionRevisionPolicy.playerDraft(dao.revisionList("track")))
+    }
+    @Test fun `discarding latest preview returns to saved text not older previews`() = runBlocking {
+        val dao = dao(); val saved = draft(dao); dao.apply(saved)
+        draft(dao, saved); val latest = draft(dao, saved); dao.discard(latest)
+        assertNull(CompanionRevisionPolicy.playerDraft(dao.revisionList("track")))
+        val next = draft(dao, saved)
+        assertEquals(next, CompanionRevisionPolicy.playerDraft(dao.revisionList("track"))!!.id)
+    }
     @Test fun `accepted version cannot be applied twice`() = runBlocking {
         val dao = dao(); val id = draft(dao); dao.apply(id)
         try { dao.apply(id); fail<Unit>("Expected draft-only apply") } catch (_: IllegalArgumentException) { }
@@ -81,6 +101,7 @@ private class MemoryCompanionDao(var profile: CompanionTrack) : CompanionDao() {
     override suspend fun archive(trackId: String, section: String, target: String, language: String) {
         rows.replaceAll { _, it -> if (it.trackId == trackId && it.section == section && it.target == target && it.language == language && it.state == "saved") it.copy(state = "archived") else it }
     }
+    override suspend fun discard(id: Long) { rows[id]?.takeIf { it.state == "draft" }?.let { rows[id] = it.copy(state = "discarded") } }
     override suspend fun accept(id: Long) { rows[id] = rows.getValue(id).copy(state = "saved") }
     override fun messages(id: String) = flowOf(emptyList<CompanionMessage>())
     override suspend fun messageList(id: String) = emptyList<CompanionMessage>()

@@ -15,7 +15,7 @@ import java.util.UUID
 
 class AmbiguousCompanion(val candidates: List<CompanionTrack>) : IllegalStateException("More than one dossier matches. Choose explicitly or create a new one.")
 data class CompanionPreferences(val language: String = "فارسی", val mode: String = "BILINGUAL", val consent: Boolean = false)
-data class CompanionTask(val busy: Boolean = false, val trackId: String = "", val message: String = "")
+data class CompanionTask(val busy: Boolean = false, val trackId: String = "", val message: String = "", val error: Boolean = false)
 
 class SongCompanion(private val symphony: Symphony) : Symphony.Hooks {
     private val db = CompanionDatabase.create(symphony.applicationContext)
@@ -73,7 +73,7 @@ class SongCompanion(private val symphony: Symphony) : Symphony.Hooks {
             job = scope.launch {
                 try { block(); mutableTask.value = CompanionTask(false, trackId, "Saved locally") }
                 catch (e: CancellationException) { mutableTask.value = CompanionTask(false, trackId, "Stopped"); throw e }
-                catch (e: Exception) { mutableTask.value = CompanionTask(false, trackId, e.message ?: "Operation failed") }
+                catch (e: Exception) { mutableTask.value = CompanionTask(false, trackId, e.message ?: "Operation failed", error = true) }
             }
         }
     }
@@ -94,7 +94,10 @@ class SongCompanion(private val symphony: Symphony) : Symphony.Hooks {
         Follow the current instruction field as the user request within the active scope. If lyrics are absent, state the limits; do not invent lyrics or pretend to analyze missing text.
         STORY: use ONLY supplied source excerpts. Every factual paragraph needs sourceIds from the supplied sources.
         If sources do not establish an event, explicitly say it is unknown; never invent facts, citations, quotes or URLs.
-        MEANING/NOTE: describe plausible interpretations and uncertainty, not hidden intent as established fact.
+        MEANING: this is the unified 'Behind the song' article. Follow writingBrief for style and focus.
+        Use model knowledge and supplied song data, not external research; no source selection is required.
+        Never show source IDs, invented citations or claims of browsing. Distinguish uncertain interpretation from known background.
+        NOTE: describe a plausible reading of the selected line, not hidden intent as an established fact.
         TRANSLATION: faithfully translate EVERY provided line once, with its exact ID; no omissions or new lines.
         The active section is ${section.name}. Only propose edits to this section and the exact active target.
         Return JSON only. Section payload schema: ${schema(section)}
@@ -107,7 +110,9 @@ class SongCompanion(private val symphony: Symphony) : Symphony.Hooks {
         put("title", track.title); put("artists", track.artists); put("album", track.album)
         put("activeTarget", target); put("language", language); put("instruction", instruction.take(8000))
         put("lyrics", Json.parseToJsonElement(track.snapshot))
-        put("sources", JsonArray(sources.map { buildJsonObject {
+        if (section == CompanionSection.MEANING) put("writingBrief", SongStoryPrompt.render(symphony.llm.songStoryPrompt,
+            track.title, track.artists, track.album, language))
+        put("sources", JsonArray((if (section == CompanionSection.STORY) sources else emptyList()).map { buildJsonObject {
             put("id", it.id); put("title", it.title); put("url", it.url); put("excerpt", it.excerpt.take(8000)); put("origin", it.origin)
         } }))
         dao.saved(track.id, section.name, target, language)?.let { put("savedPayload", CompanionCore.parseObject(it.payload)) }
@@ -160,6 +165,11 @@ class SongCompanion(private val symphony: Symphony) : Symphony.Hooks {
             dao.insertMessage(CompanionMessage(trackId = trackId, role = "error", text = (e.message ?: "Request failed").take(12000),
                 section = section.name, target = target, language = language)); throw e
         }
+    }
+    fun discard(id: Long, trackId: String) = start(trackId) {
+        val revision = dao.revision(id) ?: error("Draft not found")
+        require(revision.trackId == trackId && revision.state == "draft")
+        dao.discard(id)
     }
     fun apply(id: Long, trackId: String) = start(trackId) { require(dao.revision(id)?.trackId == trackId); dao.apply(id) }
     fun restore(id: Long, trackId: String) = start(trackId) {

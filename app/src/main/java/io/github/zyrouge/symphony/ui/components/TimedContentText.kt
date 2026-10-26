@@ -177,8 +177,8 @@ fun TimedContentText(
                     },
             ) {
                 val translated = translations[i]
-                if (displayMode != "TRANSLATION" || translated == null) Text(x.second, style = textStyle)
-                if (displayMode != "ORIGINAL" && translated != null) Text(translated, style = textStyle.copy(fontSize = textStyle.fontSize * 0.8f))
+                if (displayMode != "TRANSLATION" || translated == null) ReadableText(x.second, style = textStyle)
+                if (displayMode != "ORIGINAL" && translated != null) ReadableText(translated, style = textStyle.copy(fontSize = textStyle.fontSize * 0.8f))
                 if (i in annotated) Text("✦ Line note · hold to read", style = textStyle.copy(fontSize = textStyle.fontSize * 0.55f))
             }
         }

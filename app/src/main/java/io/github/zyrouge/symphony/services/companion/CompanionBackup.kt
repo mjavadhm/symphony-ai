@@ -55,7 +55,7 @@ object CompanionBackup {
         val revisions = bundle.revisions.associateBy { it.id }
         require(revisions.size == bundle.revisions.size && revisions.keys.all { it > 0 })
         bundle.revisions.forEach { revision ->
-            require(revision.trackId in tracks && revision.state in setOf("draft", "saved", "archived") && revision.origin in setOf("ai", "user", "restore"))
+            require(revision.trackId in tracks && revision.state in setOf("draft", "saved", "archived", "discarded") && revision.origin in setOf("ai", "user", "restore"))
             require(revision.language.isNotBlank())
             val snapshot = CompanionCore.decodeSnapshot(revision.snapshot)
             CompanionCore.validatePayload(CompanionSection.valueOf(revision.section), revision.target, snapshot,

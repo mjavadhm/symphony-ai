@@ -12,6 +12,10 @@ import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.unit.dp
 import io.github.zyrouge.symphony.services.companion.*
 import io.github.zyrouge.symphony.ui.components.GlassSettingsScaffold
+import io.github.zyrouge.symphony.ui.components.GlassSurface
+import io.github.zyrouge.symphony.ui.components.ReadableText
+import io.github.zyrouge.symphony.ui.components.readingStyle
+import androidx.compose.foundation.shape.RoundedCornerShape
 import io.github.zyrouge.symphony.ui.helpers.ViewContext
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -67,12 +71,11 @@ private fun CompanionDossier(context: ViewContext, id: String, initialLine: Stri
     val sources by remember(id) { service.dao.sources(id) }.collectAsState(initial = emptyList())
     val prefs by service.preferences.collectAsState()
     val task by service.task.collectAsState()
-    var tab by rememberSaveable(id) { mutableIntStateOf(if (initialLine.isEmpty()) 0 else 3) }
-    var sectionName by rememberSaveable(id) { mutableStateOf(if (initialLine.isEmpty()) "STORY" else "NOTE") }
+    var tab by rememberSaveable(id) { mutableIntStateOf(if (initialLine.isEmpty()) 0 else 2) }
+    var sectionName by rememberSaveable(id) { mutableStateOf(if (initialLine.isEmpty()) "MEANING" else "NOTE") }
     var lineId by rememberSaveable(id) { mutableStateOf(initialLine) }
     var instruction by rememberSaveable(id) { mutableStateOf("") }
     var question by rememberSaveable(id) { mutableStateOf("") }
-    var sourceDialog by remember { mutableStateOf(false) }
     var editor by remember { mutableStateOf<CompanionRevision?>(null) }
     var manualNew by remember { mutableStateOf(false) }
     var chatCount by rememberSaveable(id) { mutableIntStateOf(50) }
@@ -87,15 +90,15 @@ private fun CompanionDossier(context: ViewContext, id: String, initialLine: Stri
     val canAct = !task.busy && (section != CompanionSection.NOTE || snapshot.lines.any { it.id == target })
     Column(modifier.fillMaxSize()) {
         Column(Modifier.padding(horizontal = 16.dp)) {
-            Text(profile.title, style = MaterialTheme.typography.titleLarge)
+            ReadableText(profile.title, style = MaterialTheme.typography.titleLarge)
             Text("${profile.artists} · ${prefs.language}", style = MaterialTheme.typography.bodySmall)
             Text("Saved on this device. Opening this page never calls AI.", style = MaterialTheme.typography.bodySmall)
         }
         ScrollableTabRow(selectedTabIndex = tab, edgePadding = 8.dp) {
-            listOf("Story", "Meaning", "Translation", "Line notes", "Chat").forEachIndexed { i, title ->
+            listOf("Behind the song", "Translation", "Line notes", "Chat").forEachIndexed { i, title ->
                 Tab(selected = tab == i, onClick = {
                     tab = i
-                    if (i < 4) sectionName = CompanionSection.entries[i].name
+                    if (i < 3) sectionName = listOf("MEANING", "TRANSLATION", "NOTE")[i]
                 }, text = { Text(title) })
             }
         }
@@ -109,7 +112,7 @@ private fun CompanionDossier(context: ViewContext, id: String, initialLine: Stri
             if (section == CompanionSection.NOTE) {
                 Text("Select a lyric line (or long-press a line in the player).")
                 snapshot.lines.forEach { line ->
-                    Text((if (line.id == lineId) "● " else "○ ") + line.text,
+                    ReadableText((if (line.id == lineId) "● " else "○ ") + line.text,
                         Modifier.fillMaxWidth().clickable { lineId = line.id }.padding(6.dp))
                 }
                 val currentIds = snapshot.lines.map { it.id }.toSet()
@@ -119,51 +122,53 @@ private fun CompanionDossier(context: ViewContext, id: String, initialLine: Stri
                 }
                 if (snapshot.lines.isEmpty()) Text("Add lyrics first to create line notes or translations.")
             }
-            if (tab == 4) {
+            if (tab == 3) {
                 Text("Chat scope: ${section.name.lowercase()} · ${prefs.language}", style = MaterialTheme.typography.titleMedium)
                 Text("Select another section tab before opening Chat to change its scope. Changes are proposals until you tap Apply.")
                 val conversation = messages.filter { it.section == section.name && it.target == target && it.language == prefs.language }
                 if (conversation.size > chatCount) TextButton(onClick = { chatCount += 50 }) { Text("Show older messages") }
                 conversation.takeLast(chatCount).forEach { message ->
-                    Card(Modifier.fillMaxWidth()) { Column(Modifier.padding(12.dp)) {
+                    GlassSurface(Modifier.fillMaxWidth(), shape = RoundedCornerShape(28.dp)) { Column(Modifier.padding(16.dp)) {
                         Text(message.role, style = MaterialTheme.typography.labelMedium)
-                        Text(message.text)
+                        ReadableText(SongStoryPrompt.readable(message.text))
                         message.revisionId?.let { revId -> revisions.firstOrNull { it.id == revId }?.let { revision ->
                             RevisionCard(service, revision, snapshot, sources, task.busy)
                         } }
                     } }
                 }
-                OutlinedTextField(question, { question = it }, Modifier.fillMaxWidth(), label = { Text("Ask, clarify, or request a correction") })
+                OutlinedTextField(question, { question = it }, Modifier.fillMaxWidth(), textStyle = readingStyle(question, LocalTextStyle.current), label = { Text("Ask, clarify, or request a correction") })
                 Button(enabled = canAct && question.isNotBlank(), onClick = {
                     service.chat(id, section, target, question); question = ""
                 }) { Text("Send") }
             } else {
-                if (section == CompanionSection.STORY) {
-                    Text("Source-based AI summary, not verified artist testimony. Citations show supplied excerpts, not independent fact-checking.")
-                    TextButton(onClick = { sourceDialog = true }) { Text("References (${sources.size}/8) · search / add") }
-                }
-                if (section == CompanionSection.MEANING || section == CompanionSection.NOTE) Text("AI interpretation — not established artist intent.")
+                if (section == CompanionSection.MEANING) Text("AI-written background; not independently verified.", style = MaterialTheme.typography.bodySmall)
                 if (saved == null) Text("Nothing saved in this section/language yet.")
                 else {
                     Text("Saved version", style = MaterialTheme.typography.titleMedium)
                     RevisionCard(service, saved, snapshot, sources, task.busy)
                 }
-                OutlinedTextField(instruction, { instruction = it }, Modifier.fillMaxWidth(), label = { Text("Optional direction for a new draft") })
+                OutlinedTextField(instruction, { instruction = it }, Modifier.fillMaxWidth(), textStyle = readingStyle(instruction, LocalTextStyle.current), label = { Text("Optional direction for a new draft") })
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     Button(enabled = canAct, onClick = { service.generate(id, section, target, instruction) }) { Text(if (saved == null) "Generate draft" else "New draft") }
                     TextButton(enabled = canAct, onClick = { editor = saved; manualNew = saved == null }) { Text("Edit manually") }
                 }
                 (if (history) drafts else drafts.take(3)).forEach { revision ->
-                    Text("Unapplied draft #${revision.id}", style = MaterialTheme.typography.titleSmall)
+                    Text("Draft to review", style = MaterialTheme.typography.titleSmall)
                     RevisionCard(service, revision, snapshot, sources, task.busy)
                 }
                 TextButton(onClick = { history = !history }) { Text(if (history) "Hide versions" else "Version history") }
-                if (history) scoped.filter { it.state == "archived" }.forEach { RevisionCard(service, it, snapshot, sources, task.busy) }
+                if (history) {
+                    scoped.filter { it.state in setOf("archived", "discarded") }.forEach { RevisionCard(service, it, snapshot, sources, task.busy) }
+                    if (section == CompanionSection.MEANING) {
+                        val legacy = revisions.filter { it.section == "STORY" && it.language == prefs.language }
+                        if (legacy.isNotEmpty()) Text("Earlier source-based stories · kept for reference")
+                        legacy.forEach { RevisionCard(service, it, snapshot, sources, task.busy) }
+                    }
+                }
             }
             Spacer(Modifier.height(32.dp))
         }
     }
-    if (sourceDialog) ReferenceDialog(service, profile, sources) { sourceDialog = false }
     if (editor != null || manualNew) PayloadEditor(service, id, section, target, snapshot, sources, editor) { editor = null; manualNew = false }
 }
 
@@ -173,24 +178,25 @@ internal fun RevisionCard(service: SongCompanion, revision: CompanionRevision, c
     val snapshot = remember(revision.snapshot) { CompanionCore.decodeSnapshot(revision.snapshot) }
     val stale = snapshot.hash != current.hash
     val uriHandler = LocalUriHandler.current
-    Card(Modifier.fillMaxWidth()) { Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        Text("#${revision.id} · ${revision.state} · ${revision.origin} ${revision.model}", style = MaterialTheme.typography.labelSmall)
+    GlassSurface(Modifier.fillMaxWidth(), shape = RoundedCornerShape(28.dp)) { Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        Text(if (revision.state == "saved") "Saved" else if (revision.state == "draft") "Preview" else "Earlier version", style = MaterialTheme.typography.labelSmall)
         if (stale) Text("Lyrics changed: this version is kept for reference, but is not shown over the current lyrics.", color = MaterialTheme.colorScheme.error)
         when (section) {
             CompanionSection.TRANSLATION -> {
                 val translations = CompanionCore.translations(revision.payload)
-                snapshot.lines.forEach { Text(it.text); Text(translations[it.id].orEmpty(), color = MaterialTheme.colorScheme.primary) }
+                snapshot.lines.forEach { ReadableText(it.text); ReadableText(translations[it.id].orEmpty(), style = MaterialTheme.typography.bodyMedium.copy(color = MaterialTheme.colorScheme.primary)) }
             }
             CompanionSection.STORY -> CompanionCore.parseObject(revision.payload).getValue("paragraphs").jsonArray.forEach { item ->
                 val p = item.jsonObject
-                Text(p.getValue("text").jsonPrimitive.content)
+                ReadableText(SongStoryPrompt.readable(p.getValue("text").jsonPrimitive.content))
                 p.getValue("sourceIds").jsonArray.forEach { ref -> sources.firstOrNull { it.id == ref.jsonPrimitive.content }?.let { source ->
                     TextButton(onClick = { uriHandler.openUri(source.url) }) { Text("Source: ${source.title}") }
                 } }
             }
-            else -> Text(CompanionCore.display(section, revision.payload))
+            else -> ReadableText(SongStoryPrompt.readable(CompanionCore.display(section, revision.payload)))
         }
         if (revision.state == "draft") Button(enabled = !busy && !stale, onClick = { service.apply(revision.id, revision.trackId) }) { Text("Apply to saved dossier") }
+        if (revision.state == "draft") TextButton(enabled = !busy, onClick = { service.discard(revision.id, revision.trackId) }) { Text("Discard") }
         if (revision.state == "archived") TextButton(enabled = !busy && !stale, onClick = { service.restore(revision.id, revision.trackId) }) { Text("Restore as a new version") }
     } }
 }
@@ -203,11 +209,11 @@ private fun PayloadEditor(service: SongCompanion, id: String, section: Companion
     AlertDialog(onDismissRequest = dismiss, title = { Text("Manual edit · ${section.name.lowercase()}") }, text = {
         Column(Modifier.heightIn(max = 420.dp).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             if (section == CompanionSection.TRANSLATION) snapshot.lines.forEach { line ->
-                Text(line.text)
-                OutlinedTextField(translations[line.id].orEmpty(), { translations[line.id] = it }, label = { Text("Translation") })
+                ReadableText(line.text)
+                OutlinedTextField(translations[line.id].orEmpty(), { translations[line.id] = it }, textStyle = readingStyle(translations[line.id].orEmpty(), LocalTextStyle.current), label = { Text("Translation") })
             } else {
                 if (section == CompanionSection.STORY) Text("Manual story uses all selected references below; make sure they actually support your text.")
-                OutlinedTextField(text, { text = it }, Modifier.fillMaxWidth(), label = { Text("Text") }, minLines = 4)
+                OutlinedTextField(text, { text = it }, Modifier.fillMaxWidth(), textStyle = readingStyle(text, LocalTextStyle.current), label = { Text("Text") }, minLines = 4)
             }
         }
     }, confirmButton = { TextButton(enabled = if (section == CompanionSection.TRANSLATION) snapshot.lines.isNotEmpty() && snapshot.lines.all { !translations[it.id].isNullOrBlank() }
@@ -223,35 +229,4 @@ private fun PayloadEditor(service: SongCompanion, id: String, section: Companion
         }.toString()
         service.edit(id, section, target, payload); dismiss()
     }) { Text("Save new version") } }, dismissButton = { TextButton(onClick = dismiss) { Text("Cancel") } })
-}
-
-@Composable
-internal fun ReferenceDialog(service: SongCompanion, profile: CompanionTrack, sources: List<CompanionSource>, dismiss: () -> Unit) {
-    val scope = rememberCoroutineScope()
-    var title by remember { mutableStateOf("") }; var url by remember { mutableStateOf("") }; var excerpt by remember { mutableStateOf("") }
-    var results by remember { mutableStateOf<List<CompanionReference>>(emptyList()) }
-    var origin by remember { mutableStateOf("user") }; var status by remember { mutableStateOf("") }; var busy by remember { mutableStateOf(false) }
-    AlertDialog(onDismissRequest = dismiss, title = { Text("Review references") }, text = {
-        Column(Modifier.heightIn(max = 480.dp).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            Text("Read the excerpt and check it is about this recording. Search is optional and uses English Wikipedia; no Genius scraping.")
-            sources.forEach { Text("✓ ${it.title} · ${it.origin}\n${it.url}\n${it.excerpt.take(350)}") }
-            TextButton(enabled = !busy, onClick = { scope.launch {
-                busy = true; status = "Searching…"
-                try { results = service.references.search(profile.title, profile.artists); status = if (results.isEmpty()) "No references found; add one manually." else "Select and review an excerpt below." }
-                catch (e: kotlinx.coroutines.CancellationException) { throw e }
-        catch (e: Exception) { status = e.message.orEmpty() }
-                finally { busy = false }
-            } }) { Text("Search Wikipedia") }
-            results.forEach { ref -> TextButton(onClick = { title = ref.title; url = ref.url; excerpt = ref.excerpt; origin = "wikipedia" }) { Text(ref.title) } }
-            Text(status)
-            OutlinedTextField(title, { title = it; origin = "user" }, label = { Text("Reference title") })
-            OutlinedTextField(url, { url = it; origin = "user" }, label = { Text("HTTPS URL") })
-            OutlinedTextField(excerpt, { excerpt = it; origin = "user" }, label = { Text("Supporting excerpt (required)") }, minLines = 4)
-        }
-    }, confirmButton = { TextButton(enabled = !busy && sources.size < 8 && CompanionReferences.validUrl(url) && title.isNotBlank() && excerpt.isNotBlank(), onClick = { scope.launch {
-        busy = true
-        try { service.addSource(profile.id, CompanionReference(title, url, excerpt), origin); dismiss() }
-        catch (e: kotlinx.coroutines.CancellationException) { throw e }
-        catch (e: Exception) { status = e.message.orEmpty(); busy = false }
-    } }) { Text("Add reviewed reference") } }, dismissButton = { TextButton(onClick = dismiss) { Text("Close") } })
 }

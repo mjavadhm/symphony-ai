@@ -8,8 +8,8 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 
 class LyricsManager(private val symphony: Symphony) : Symphony.Hooks {
-    enum class Status { CHECKING, EXISTING, SIDECAR, MISSING, QUEUED, WAITING, SEARCHING, READY, NOT_FOUND, FAILED, WRITING, EMBEDDED, SKIPPED }
-    data class Item(val song: Song, val status: Status, val candidate: LyricsCandidate? = null, val message: String = "", val missing: Boolean = false)
+    enum class Status { UNKNOWN, CHECKING, EXISTING, SIDECAR, MISSING, QUEUED, WAITING, SEARCHING, READY, NOT_FOUND, FAILED, WRITING, EMBEDDED, SKIPPED }
+    data class Item(val song: Song, val status: Status, val candidate: LyricsCandidate? = null, val message: String = "", val missing: Boolean = false, val writeError: Boolean = false, val accessRequired: Boolean = false)
     data class State(
         val busy: Boolean = false,
         val scopeKey: String = "",
@@ -29,6 +29,23 @@ class LyricsManager(private val symphony: Symphony) : Symphony.Hooks {
     val revision = mutableRevision.asStateFlow()
     private var job: Job? = null
     private val prefs = symphony.applicationContext.getSharedPreferences("lyrics_manager", 0)
+    private val inventory = LyricsInventoryIndex(java.io.File(symphony.applicationContext.filesDir, "lyrics_inventory_v1.json"))
+    private val sessionItems = mutableMapOf<String, Pair<String, Item>>()
+    private fun signature(song: Song) = "${song.size}:${song.dateModified}"
+    private fun songs(ids: Set<String>?) = symphony.groove.song.values()
+        .filter { ids == null || it.id in ids }.sortedBy { it.title.lowercase() }
+
+    /** Loading a screen never reads audio files or contacts a provider. */
+    fun prepare(songIds: Set<String>? = null, scopeKey: String = "library") = launchTask {
+        val rows = songs(songIds).map { song ->
+            sessionItems[song.uri.toString()]?.takeIf { it.first == signature(song) }?.second?.copy(song = song)
+                ?: inventory.get(song.uri.toString(), signature(song))?.let { status ->
+                    Item(song, Status.valueOf(status), missing = status == "MISSING")
+                } ?: Item(song, Status.UNKNOWN)
+        }
+        mutableState.update { it.copy(scopeKey = scopeKey, scanned = rows.none { row -> row.status == Status.UNKNOWN },
+            items = rows, progress = if (rows.any { row -> row.status == Status.UNKNOWN }) "Check local files to find songs without lyrics. No automatic scan or online requests." else "Saved library check · use Check changes to update") }
+    }
     var baseUrl: String
         get() = prefs.getString("base_url", LrclibClient.DEFAULT_BASE_URL)!!
         set(value) { prefs.edit().putString("base_url", LrclibClient.normalizeBaseUrl(value)).apply() }
@@ -43,8 +60,15 @@ class LyricsManager(private val symphony: Symphony) : Symphony.Hooks {
     private fun cooldownKey(base: String) = "cooldown:" + java.security.MessageDigest.getInstance("SHA-256")
         .digest(base.toByteArray()).joinToString("") { "%02x".format(it) }
 
-    private fun update(item: Item) = mutableState.update { state ->
-        state.copy(items = state.items.map { if (it.song.id == item.song.id) item else it })
+    private fun update(item: Item) {
+        sessionItems[item.song.uri.toString()] = signature(item.song) to item
+        val known = when (item.status) {
+            Status.EXISTING, Status.EMBEDDED -> "EXISTING"
+            Status.SIDECAR -> "SIDECAR"
+            else -> if (item.missing) "MISSING" else null
+        }
+        if (known != null) inventory.put(item.song.uri.toString(), signature(item.song), known)
+        mutableState.update { state -> state.copy(items = state.items.map { if (it.song.id == item.song.id) item else it }) }
     }
     private fun launchTask(block: suspend () -> Unit) {
         if (mutableState.value.busy) return
@@ -54,22 +78,34 @@ class LyricsManager(private val symphony: Symphony) : Symphony.Hooks {
             catch (e: CancellationException) {
                 mutableState.update { state -> state.copy(progress = "Stopped", items = state.items.map {
                     if (it.status in setOf(Status.CHECKING, Status.SEARCHING, Status.QUEUED, Status.WAITING, Status.WRITING)) {
-                        it.copy(status = if (it.missing) Status.MISSING else Status.SKIPPED, message = "Stopped; select and retry")
+                        it.copy(status = if (it.status == Status.CHECKING) Status.UNKNOWN else if (it.missing) Status.MISSING else Status.SKIPPED, message = "Stopped; select and retry")
                     } else it
                 }) }
                 throw e
             } catch (e: Exception) { mutableState.update { it.copy(progress = e.message ?: "Operation failed") } }
-            finally { mutableState.update { it.copy(busy = false, recoveries = store.recoveries()) } }
+            finally {
+                // Persist only settled results, never an interrupted queue or write state.
+                mutableState.value.items.forEach { sessionItems[it.song.uri.toString()] = signature(it.song) to it }
+                runCatching { inventory.save() }
+                mutableState.update { it.copy(busy = false, recoveries = store.recoveries()) }
+            }
         }
     }
 
     /** Local inventory ONLY: never constructs a URL or contacts any lyrics provider. */
-    fun scan(songIds: Set<String>? = null, scopeKey: String = "library") = launchTask {
+    fun scan(songIds: Set<String>? = null, scopeKey: String = "library", force: Boolean = false) = launchTask {
         check(store.recoveries().isEmpty()) { "Restore pending recovery backups before starting another scan" }
-        val songs = symphony.groove.song.values().filter { songIds == null || it.id in songIds }.sortedBy { it.title.lowercase() }
-        mutableState.update { it.copy(scopeKey = scopeKey, scanned = false, items = songs.map { song -> Item(song, Status.CHECKING) }) }
+        val songs = songs(songIds)
+        mutableState.update { it.copy(scopeKey = scopeKey, scanned = false, items = songs.map { song ->
+            if (!force) sessionItems[song.uri.toString()]?.takeIf { cached -> cached.first == signature(song) }?.second?.copy(song = song)
+                ?: inventory.get(song.uri.toString(), signature(song))?.let { status -> Item(song, Status.valueOf(status), missing = status == "MISSING") }
+                ?: Item(song, Status.CHECKING)
+            else Item(song, Status.CHECKING)
+        }) }
         for ((index, song) in songs.withIndex()) {
             currentCoroutineContext().ensureActive()
+            val prior = mutableState.value.items.first { it.song.id == song.id }
+            if (!force && prior.status !in setOf(Status.CHECKING, Status.UNKNOWN, Status.FAILED)) continue
             mutableState.update { it.copy(progress = "Local scan ${index + 1}/${songs.size}: ${song.title} · no internet requests") }
             if (!EmbeddedLyricsStore.supported(song.filename)) {
                 update(Item(song, Status.SKIPPED, message = "Unsupported file format")); continue
@@ -152,9 +188,9 @@ class LyricsManager(private val symphony: Symphony) : Symphony.Hooks {
             currentCoroutineContext().ensureActive()
             mutableState.update { it.copy(progress = "Embedding ${index + 1}/${ready.size}: ${item.song.title}") }
             if (symphony.radio.hasPlayer && symphony.radio.queue.currentSongId == item.song.id) {
-                update(item.copy(message = "Currently loaded in player; play a different song before embedding this file")); continue
+                update(item.copy(message = "Currently loaded in player; play a different song before embedding this file", writeError = true, accessRequired = false)); continue
             }
-            update(item.copy(status = Status.WRITING))
+            update(item.copy(status = Status.WRITING, message = "", writeError = false, accessRequired = false))
             try {
                 // Finish this file (including cache/state refresh) before honoring Stop.
                 withContext(NonCancellable) {
@@ -164,17 +200,20 @@ class LyricsManager(private val symphony: Symphony) : Symphony.Hooks {
                         symphony.database.lyricsCache.put(item.song.id, item.candidate.text)
                         mutableRevision.update { it + 1 }
                     }
-                    update(item.copy(status = if (written) Status.EMBEDDED else Status.EXISTING, message = "", missing = false))
+                    update(item.copy(status = if (written) Status.EMBEDDED else Status.EXISTING, message = "", missing = false, writeError = false, accessRequired = false))
                 }
             } catch (e: CancellationException) { throw e }
             catch (e: SecurityException) {
-                update(item.copy(message = "Grant write access to this music folder, then retry"))
+                update(item.copy(message = "Grant write access to this music folder, then retry", writeError = true, accessRequired = true))
             } catch (e: Exception) {
-                update(item.copy(message = e.message ?: "Embed failed; retry"))
+                update(item.copy(message = if (LyricsWriteErrors.isAccess(e)) "Write access denied. Grant access to this music folder, then retry." else e.message ?: "Embed failed; retry", writeError = true, accessRequired = LyricsWriteErrors.isAccess(e)))
                 if (store.recoveries().isNotEmpty()) throw e
             }
         }
-        mutableState.update { it.copy(progress = "Embedding complete") }
+        val results = mutableState.value.items.filter { it.song.id in songIds }
+        val failed = results.count { it.writeError }
+        val written = results.count { it.status == Status.EMBEDDED }
+        mutableState.update { it.copy(progress = "$written embedded and verified · $failed need attention${if (failed > 0) ". Open Errors, grant access if needed, then retry." else ""}") }
     }
 
     fun restore(recovery: EmbeddedLyricsStore.Recovery) = launchTask {
@@ -185,7 +224,8 @@ class LyricsManager(private val symphony: Symphony) : Symphony.Hooks {
                 symphony.database.lyricsCache.delete(it.id)
                 store.readLyrics(it)?.let { text -> symphony.database.lyricsCache.put(it.id, text) }
             }
-            mutableState.update { it.copy(items = emptyList(), progress = "Original restored. Scan again to refresh the list.") }
+            inventory.clear(); sessionItems.clear()
+            mutableState.update { it.copy(items = emptyList(), scanned = false, progress = "Original restored. Check files again to refresh the list.") }
             mutableRevision.update { it + 1 }
         }
     }

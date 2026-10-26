@@ -9,9 +9,15 @@ import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.material3.TextButton
-import androidx.compose.material3.FilterChip
+import androidx.compose.material3.*
+import androidx.compose.material.icons.filled.MoreVert
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.padding
+import androidx.compose.ui.text.font.FontWeight
+import io.github.zyrouge.symphony.ui.view.companion.CompanionSettingsRoute
 import androidx.compose.runtime.saveable.rememberSaveable
 import io.github.zyrouge.symphony.ui.view.companion.InlineSongAnalysis
 import io.github.zyrouge.symphony.ui.view.settings.LyricsSettingsViewRoute
@@ -89,6 +95,8 @@ fun LyricsText(
     var profileId by remember { mutableStateOf("") }
     var profileError by remember { mutableStateOf("") }
     var showAnalysis by rememberSaveable { mutableStateOf(false) }
+    var menu by remember { mutableStateOf(false) }
+    var storyRequest by remember(song?.id) { mutableStateOf<String?>(null) }
     var lineSnapshot by remember { mutableStateOf<CompanionSnapshot?>(null) }
     val revisions by remember(profileId) {
         if (profileId.isEmpty()) flowOf(emptyList<CompanionRevision>()) else companion.dao.revisions(profileId)
@@ -126,7 +134,7 @@ fun LyricsText(
                         lyrics = null
                         profileId = ""; profileError = ""; lineSnapshot = null
                         val raw = withContext(Dispatchers.IO) { song?.let { context.symphony.groove.song.getLyrics(it) } }
-                        lyrics = raw?.let { TimedContent.fromLyrics(it) }
+                        lyrics = raw?.takeIf { it.isNotBlank() }?.let { TimedContent.fromLyrics(it) }?.takeIf { parsed -> parsed.pairs.any { it.second.isNotBlank() } }
                         lyricsState = 2
                         if (song != null) {
                             try {
@@ -148,19 +156,38 @@ fun LyricsText(
     }
 
     Column(Modifier.fillMaxSize()) {
-        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            FilterChip(selected = !showAnalysis, onClick = { showAnalysis = false }, label = { Text("Lyrics") })
-            FilterChip(selected = showAnalysis, onClick = { showAnalysis = true }, label = { Text("About this song") })
+        Row(Modifier.fillMaxWidth().padding(horizontal = 12.dp), verticalAlignment = Alignment.CenterVertically) {
+            // Text tabs instead of chunky filter chips; both retain accessible touch targets.
+            listOf(false to "Lyrics", true to "Behind the song").forEach { (analysis, label) ->
+                Column {
+                    TextButton(onClick = { showAnalysis = analysis }, modifier = Modifier.heightIn(min = 48.dp),
+                        colors = ButtonDefaults.textButtonColors(contentColor = LocalContentColor.current.copy(alpha = if (showAnalysis == analysis) 1f else 0.55f))) {
+                        Text(label, style = MaterialTheme.typography.labelLarge, fontWeight = if (showAnalysis == analysis) FontWeight.Bold else FontWeight.Normal)
+                    }
+                    if (showAnalysis == analysis) HorizontalDivider(Modifier.padding(horizontal = 12.dp).size(width = if (analysis) 104.dp else 40.dp, height = 2.dp), color = LocalContentColor.current)
+                }
+            }
+            Spacer(Modifier.weight(1f))
+            Box {
+                IconButton(onClick = { menu = true }) { Icon(Icons.Filled.MoreVert, contentDescription = "Lyrics options") }
+                DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
+                    if (acceptedTranslation != null) DropdownMenuItem(text = { Text(if (preferences.mode == "ORIGINAL") "Show translation" else "Original only") }, onClick = {
+                        menu = false; companion.configure(mode = if (preferences.mode == "ORIGINAL") "BILINGUAL" else "ORIGINAL")
+                    })
+                    if (showAnalysis) {
+                        DropdownMenuItem(text = { Text("Ask / correct") }, onClick = { menu = false; storyRequest = "chat" })
+                        DropdownMenuItem(text = { Text("Rewrite the story") }, onClick = { menu = false; storyRequest = "rewrite" })
+                    }
+                    DropdownMenuItem(text = { Text("Translation, edits & history") }, onClick = {
+                        menu = false; song?.let { context.navController.navigate(SongCompanionRoute(songId = it.id)) }
+                    })
+                    DropdownMenuItem(text = { Text("Story prompt & settings") }, onClick = { menu = false; context.navController.navigate(CompanionSettingsRoute) })
+                }
+            }
         }
         if (showAnalysis) {
-            song?.let { InlineSongAnalysis(context, it.id, if (lyricsSongId == it.id) profileId else "", if (lyricsSongId == it.id) profileError else "", padding) }
+            song?.let { InlineSongAnalysis(context, it.id, if (lyricsSongId == it.id) profileId else "", if (lyricsSongId == it.id) profileError else "", padding, request = storyRequest, onRequestHandled = { storyRequest = null }) }
         } else {
-            Row(Modifier.fillMaxWidth()) {
-                TextButton(enabled = song != null, onClick = { song?.let { context.navController.navigate(LyricsSettingsViewRoute(songId = it.id)) } }) { Text("Find lyrics") }
-                if (acceptedTranslation != null) TextButton(onClick = {
-                    companion.configure(mode = if (preferences.mode == "ORIGINAL") "BILINGUAL" else "ORIGINAL")
-                }) { Text(if (preferences.mode == "ORIGINAL") "Show translation" else "Original only") }
-            }
             AnimatedContent(
                 modifier = Modifier.weight(1f)
                     .graphicsLayer { compositingStrategy = CompositingStrategy.Offscreen }
@@ -219,6 +246,9 @@ fun LyricsText(
                                 else context.symphony.t.NoLyrics,
                                 color = LocalContentColor.current.copy(alpha = 0.6f),
                             )
+                            if (targetLyricsState == 2 && lyricsSongId == song?.id) TextButton(onClick = {
+                                song?.let { context.navController.navigate(LyricsSettingsViewRoute(songId = it.id)) }
+                            }) { Text("Find lyrics") }
                         }
                     }
                 }

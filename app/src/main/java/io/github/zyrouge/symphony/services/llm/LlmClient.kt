@@ -61,6 +61,14 @@ class LlmClient(private val symphony: Symphony) {
         """.trimIndent()
     }
 
+    var songStoryPrompt: String
+        get() = prefs.getString("tpl_song_story", null)?.takeIf { it.isNotBlank() }
+            ?: io.github.zyrouge.symphony.services.companion.SongStoryPrompt.DEFAULT
+        set(value) {
+            require(value.length <= 16000) { "Writing prompt is too long" }
+            prefs.edit().putString("tpl_song_story", value).apply()
+        }
+
     var chatBehavior: String
         get() = prefs.getString("tpl_chat_behavior", null)
             ?.takeIf { it.isNotBlank() } ?: DEFAULT_CHAT_BEHAVIOR

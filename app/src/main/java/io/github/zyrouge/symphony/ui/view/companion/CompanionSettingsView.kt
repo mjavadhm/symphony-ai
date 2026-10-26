@@ -11,6 +11,10 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import io.github.zyrouge.symphony.services.companion.CompanionBackup
 import io.github.zyrouge.symphony.ui.components.GlassSettingsScaffold
+import io.github.zyrouge.symphony.ui.components.GlassSurface
+import io.github.zyrouge.symphony.ui.components.ReadableText
+import io.github.zyrouge.symphony.ui.components.readingStyle
+import androidx.compose.foundation.shape.RoundedCornerShape
 import io.github.zyrouge.symphony.ui.helpers.ViewContext
 import io.github.zyrouge.symphony.ui.view.settings.LlmSettingsRoute
 import kotlinx.coroutines.Dispatchers
@@ -26,6 +30,7 @@ fun CompanionSettingsView(context: ViewContext) {
     var language by remember(prefs.language) { mutableStateOf(prefs.language) }
     var status by remember { mutableStateOf("") }
     var busy by remember { mutableStateOf(false) }
+    var showLibrary by remember { mutableStateOf(false) }
     val export = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/json")) { uri ->
         if (uri != null) scope.launch {
             busy = true
@@ -65,25 +70,35 @@ fun CompanionSettingsView(context: ViewContext) {
             finally { busy = false }
         }
     }
-    GlassSettingsScaffold(context, "Song Companion settings") { padding ->
-        Column(Modifier.padding(padding).padding(horizontal = 16.dp).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-            Text("AI & privacy", style = MaterialTheme.typography.titleLarge)
-            Text("Generation sends song metadata, lyrics, selected reference excerpts, saved text and recent chat context to your configured AI provider. No audio file is uploaded. Wikipedia search sends song title/artist to Wikipedia. Offline reading and manual edits do not require AI.")
+    GlassSettingsScaffold(context, "Song stories & translation") { padding ->
+        Column(Modifier.padding(padding).padding(horizontal = 14.dp).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            GlassSurface(Modifier.fillMaxWidth(), shape = RoundedCornerShape(28.dp)) {
+            Column(Modifier.padding(horizontal = 20.dp, vertical = 16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            Text("AI & language", style = MaterialTheme.typography.titleMedium)
+            Text("AI runs only when you ask. Song details, lyrics and relevant chat go to your chosen provider; audio stays on this device. No Wikipedia or live web lookup.")
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 Switch(checked = prefs.consent, onCheckedChange = { service.configure(consent = it) })
-                Text("Allow sending context to the AI provider", Modifier.weight(1f))
+                Text("Enable AI stories & translation", Modifier.weight(1f))
             }
-            TextButton(onClick = { context.navController.navigate(LlmSettingsRoute) }) { Text("Configure existing AI provider / base URL / model") }
-            Text("Uses the existing OpenAI-compatible provider configuration and respects AI mode Off. There is no automatic generation or background billing.")
-            OutlinedTextField(language, { language = it }, label = { Text("Explanation and translation language") }, modifier = Modifier.fillMaxWidth())
+            TextButton(onClick = { context.navController.navigate(LlmSettingsRoute) }) { Text("AI provider, model & API key") }
+            Text("Uses your AI Provider settings. Off mode disables generation; existing text stays readable.", style = MaterialTheme.typography.bodySmall)
+            OutlinedTextField(language, { language = it }, label = { Text("Explanation and translation language") }, modifier = Modifier.fillMaxWidth(), textStyle = readingStyle(language, LocalTextStyle.current))
             Button(enabled = language.isNotBlank() && language.length <= 80, onClick = { service.configure(language = language.trim()) }) { Text("Save language") }
+            }
+            }
+            StoryPromptEditor(context.symphony.llm)
+            GlassSurface(Modifier.fillMaxWidth(), shape = RoundedCornerShape(28.dp)) {
+            Column(Modifier.padding(horizontal = 20.dp, vertical = 16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
             Text("Lyric display", style = MaterialTheme.typography.titleMedium)
             listOf("ORIGINAL" to "Original only", "BILINGUAL" to "Original + translation", "TRANSLATION" to "Translation (original if unavailable)").forEach { (mode, label) ->
                 TextButton(onClick = { service.configure(mode = mode) }) { Text((if (prefs.mode == mode) "● " else "○ ") + label) }
             }
-            HorizontalDivider()
-            Text("Portable backup", style = MaterialTheme.typography.titleLarge)
-            Text("Dossiers are stored in a separate on-device database, not inside audio tags. Export before reinstalling. Import skips existing dossier IDs and does not copy old device file paths. A song with matching metadata + lyrics can reconnect automatically only if the match is unique.")
+            }
+            }
+            GlassSurface(Modifier.fillMaxWidth(), shape = RoundedCornerShape(28.dp)) {
+            Column(Modifier.padding(horizontal = 20.dp, vertical = 16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            Text("Backup & restore", style = MaterialTheme.typography.titleMedium)
+            Text("Stories, translations and chats are saved on this device, separately from audio files. Export before reinstalling. Imported songs reconnect only when a match is unambiguous.")
             Text("Backups include private chats and lyric text. Store them somewhere you trust.")
             Row {
                 TextButton(enabled = !busy, onClick = { export.launch("symphony-song-companion.json") }) { Text("Export JSON") }
@@ -91,11 +106,14 @@ fun CompanionSettingsView(context: ViewContext) {
             }
             if (busy) LinearProgressIndicator(Modifier.fillMaxWidth())
             if (status.isNotEmpty()) Text(status)
-            Text("Saved dossiers (${tracks.size})", style = MaterialTheme.typography.titleLarge)
+            }
+            }
+            Text("Saved songs (${tracks.size})", style = MaterialTheme.typography.titleLarge)
             if (tracks.isEmpty()) Text("Open Song Companion from the lyrics screen to start a dossier.")
-            tracks.forEach { track ->
+            TextButton(onClick = { showLibrary = !showLibrary }) { Text(if (showLibrary) "Hide saved songs" else "Browse saved songs") }
+            if (showLibrary) tracks.forEach { track ->
                 TextButton(onClick = { context.navController.navigate(SongCompanionRoute(trackId = track.id)) }) {
-                    Column(Modifier.fillMaxWidth()) { Text(track.title); Text("${track.artists} · ${track.id.take(8)}", style = MaterialTheme.typography.bodySmall) }
+                    Column(Modifier.fillMaxWidth()) { ReadableText(track.title); ReadableText(track.artists, style = MaterialTheme.typography.bodySmall) }
                 }
             }
             Spacer(Modifier.height(32.dp))

@@ -16,6 +16,10 @@ class CompanionBackupTest {
         val encoded = CompanionBackup.encode(bundle())
         assertFalse(encoded.contains("content://")); assertFalse(encoded.contains("apiKey")); assertFalse(encoded.contains("companion_links"))
     }
+    @Test fun `discarded drafts round trip without becoming saved`() {
+        val b = bundle().copy(revisions = listOf(revision, revision.copy(id = 2, baseId = 1, state = "discarded")))
+        assertEquals(b, decode(b))
+    }
     @Test fun `empty bundle round trips`() { val b = CompanionBundle(emptyList(), emptyList(), emptyList(), emptyList()); assertEquals(b, decode(b)) }
     @Test fun `unknown version rejected`() {
         assertThrows(IllegalArgumentException::class.java) { CompanionBackup.decode(CompanionBackup.encode(bundle()).replace("\"version\":1", "\"version\":2")) }

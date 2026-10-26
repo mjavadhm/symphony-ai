@@ -54,6 +54,7 @@ abstract class CompanionDao {
     @Query("UPDATE companion_revisions SET state = 'archived' WHERE trackId = :trackId AND section = :section AND target = :target AND language = :language AND state = 'saved'")
     protected abstract suspend fun archive(trackId: String, section: String, target: String, language: String)
     @Query("UPDATE companion_revisions SET state = 'saved' WHERE id = :id") protected abstract suspend fun accept(id: Long)
+    @Query("UPDATE companion_revisions SET state = 'discarded' WHERE id = :id AND state = 'draft'") abstract suspend fun discard(id: Long)
     @Transaction open suspend fun apply(id: Long) {
         val draft = revision(id) ?: error("Draft no longer exists")
         require(draft.state == "draft") { "Only drafts can be applied" }
@@ -75,5 +76,13 @@ abstract class CompanionDatabase : RoomDatabase() {
     abstract fun dao(): CompanionDao
     companion object {
         fun create(context: Context) = Room.databaseBuilder(context, CompanionDatabase::class.java, "song_companion").build()
+    }
+}
+
+/** A kept/discarded latest revision must not resurrect an older preview in the player. */
+object CompanionRevisionPolicy {
+    fun playerDraft(scoped: List<CompanionRevision>): CompanionRevision? {
+        val saved = scoped.filter { it.state == "saved" }.maxByOrNull { it.id }
+        return scoped.maxByOrNull { it.id }?.takeIf { it.state == "draft" && it.baseId == saved?.id }
     }
 }
