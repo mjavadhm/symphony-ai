@@ -24,6 +24,7 @@ import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Person
+import androidx.compose.material.icons.filled.Radio
 import androidx.compose.material.icons.filled.Share
 import androidx.compose.material.icons.filled.ThumbUp
 import androidx.compose.material.icons.filled.ThumbDown
@@ -304,6 +305,19 @@ fun SongDropdownMenu(
             }
         )
         if (showAiOption) {
+            DropdownMenuItem(
+                leadingIcon = { Icon(Icons.Filled.Radio, null) },
+                text = { Text("Start Radio") },
+                onClick = {
+                    onDismissRequest()
+                    context.symphony.radio.shorty.startRadio(song.id)
+                    Toast.makeText(
+                        context.activity,
+                        "Radio started — similar songs will keep coming 📻",
+                        Toast.LENGTH_SHORT
+                    ).show()
+                }
+            )
             DropdownMenuItem(
                 leadingIcon = { Icon(Icons.Filled.ThumbUp, null) },
                 text = { Text("More like this") },
