@@ -8,6 +8,12 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.material3.TextButton
+import io.github.zyrouge.symphony.services.companion.*
+import io.github.zyrouge.symphony.ui.view.companion.SongCompanionRoute
+import kotlinx.coroutines.flow.flowOf
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.MusicNote
 import androidx.compose.material3.Icon
@@ -68,6 +74,29 @@ fun LyricsText(
     var lyricsSongId by remember { mutableStateOf<String?>(null) }
     var lyrics by remember { mutableStateOf<TimedContent?>(null) }
 
+    val companion = context.symphony.songCompanion
+    val preferences by companion.preferences.collectAsState()
+    var profileId by remember { mutableStateOf("") }
+    var lineSnapshot by remember { mutableStateOf<CompanionSnapshot?>(null) }
+    val revisions by remember(profileId) {
+        if (profileId.isEmpty()) flowOf(emptyList<CompanionRevision>()) else companion.dao.revisions(profileId)
+    }.collectAsState(initial = emptyList())
+    val acceptedTranslation = remember(revisions, lineSnapshot?.hash, preferences.language) { revisions.firstOrNull {
+        it.section == "TRANSLATION" && it.language == preferences.language && it.state == "saved" &&
+            CompanionCore.decodeSnapshot(it.snapshot).hash == lineSnapshot?.hash
+    } }
+    val translations = remember(acceptedTranslation, lineSnapshot) {
+        val translatedLines = CompanionCore.translations(acceptedTranslation?.payload)
+        lineSnapshot?.lines?.mapNotNull { line -> translatedLines[line.id]?.let { line.index to it } }?.toMap().orEmpty()
+    }
+    val annotated = remember(revisions, lineSnapshot, preferences.language) {
+        val noteIds = revisions.filter {
+            it.section == "NOTE" && it.language == preferences.language && it.state == "saved" &&
+                CompanionCore.decodeSnapshot(it.snapshot).hash == lineSnapshot?.hash
+        }.map { it.target }.toSet()
+        lineSnapshot?.lines?.filter { it.id in noteIds }?.map { it.index }?.toSet().orEmpty()
+    }
+
     LaunchedEffect(LocalContext.current) {
         awaitAll(
             async {
@@ -83,14 +112,18 @@ fun LyricsText(
                         lyricsState = 1
                         lyricsSongId = song?.id
                         lyrics = null
-                        lyrics = withContext(Dispatchers.IO) {
-                            song?.let { song ->
-                                context.symphony.groove.song.getLyrics(song)?.let {
-                                    TimedContent.fromLyrics(it)
-                                }
-                            }
-                        }
+                        profileId = ""; lineSnapshot = null
+                        val raw = withContext(Dispatchers.IO) { song?.let { context.symphony.groove.song.getLyrics(it) } }
+                        lyrics = raw?.let { TimedContent.fromLyrics(it) }
                         lyricsState = 2
+                        if (song != null && raw != null) {
+                            try {
+                                val snapshot = CompanionCore.snapshot(raw)
+                                val profile = companion.resolve(song, raw)
+                                profileId = profile.id; lineSnapshot = snapshot
+                            } catch (e: kotlinx.coroutines.CancellationException) { throw e }
+                            catch (_: Exception) { /* Too long/ambiguous lyrics still play normally. Open Companion to resolve. */ }
+                        }
                     }
             }
         )
@@ -102,49 +135,67 @@ fun LyricsText(
         }
     }
 
-    AnimatedContent(
-        label = "lyrics-text",
-        targetState = lyricsState to lyrics,
-        transitionSpec = {
-            FadeTransition.enterTransition()
-                .togetherWith(FadeTransition.exitTransition())
-        },
-    ) { targetState ->
-        val targetLyricsState = targetState.first
-        val targetLyrics = targetState.second
+    Column(Modifier.fillMaxSize()) {
+        Row(Modifier.fillMaxWidth()) {
+            TextButton(enabled = song != null, onClick = { song?.let { context.navController.navigate(SongCompanionRoute(songId = it.id)) } }) { Text("✦ Song Companion") }
+            if (acceptedTranslation != null) TextButton(onClick = {
+                companion.configure(mode = if (preferences.mode == "ORIGINAL") "BILINGUAL" else "ORIGINAL")
+            }) { Text(if (preferences.mode == "ORIGINAL") "Show translation" else "Original only") }
+        }
+        AnimatedContent(
+            modifier = Modifier.weight(1f),
+            label = "lyrics-text",
+            targetState = lyricsState to lyrics,
+            transitionSpec = {
+                FadeTransition.enterTransition()
+                    .togetherWith(FadeTransition.exitTransition())
+            },
+        ) { targetState ->
+            val targetLyricsState = targetState.first
+            val targetLyrics = targetState.second
 
-        when {
-            targetLyricsState == 2 && targetLyrics != null -> TimedContentText(
-                content = targetLyrics,
-                duration = playbackPosition.played,
-                padding = padding,
-                style = style,
-                onSeek = {
-                    targetLyrics.pairs.getOrNull(it)?.first?.let { to ->
-                        context.symphony.radio.seek(to)
+            when {
+                targetLyricsState == 2 && targetLyrics != null -> TimedContentText(
+                    content = targetLyrics,
+                    duration = playbackPosition.played,
+                    padding = padding,
+                    style = style,
+                    translations = if (lyricsSongId == song?.id) translations else emptyMap(),
+                    displayMode = preferences.mode,
+                    annotated = annotated,
+                    onLongPress = { index ->
+                        val line = lineSnapshot?.lines?.firstOrNull { it.index == index }
+                        if (lyricsSongId == song?.id && line != null) song?.let {
+                            context.navController.navigate(SongCompanionRoute(songId = it.id, lineId = line.id))
+                        }
+                    },
+                    onSeek = {
+                        targetLyrics.pairs.getOrNull(it)?.first?.let { to ->
+                            context.symphony.radio.seek(to)
+                        }
                     }
-                }
-            )
+                )
 
-            else -> Box(
-                modifier = Modifier.fillMaxSize(),
-                contentAlignment = Alignment.Center,
-            ) {
-                Column(
-                    horizontalAlignment = Alignment.CenterHorizontally,
-                    verticalArrangement = Arrangement.spacedBy(12.dp),
+                else -> Box(
+                    modifier = Modifier.fillMaxSize(),
+                    contentAlignment = Alignment.Center,
                 ) {
-                    Icon(
-                        Icons.Filled.MusicNote,
-                        null,
-                        tint = LocalContentColor.current.copy(alpha = 0.4f),
-                        modifier = Modifier.size(48.dp),
-                    )
-                    Text(
-                        if (targetLyricsState == 1) context.symphony.t.Loading
-                        else context.symphony.t.NoLyrics,
-                        color = LocalContentColor.current.copy(alpha = 0.6f),
-                    )
+                    Column(
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement = Arrangement.spacedBy(12.dp),
+                    ) {
+                        Icon(
+                            Icons.Filled.MusicNote,
+                            null,
+                            tint = LocalContentColor.current.copy(alpha = 0.4f),
+                            modifier = Modifier.size(48.dp),
+                        )
+                        Text(
+                            if (targetLyricsState == 1) context.symphony.t.Loading
+                            else context.symphony.t.NoLyrics,
+                            color = LocalContentColor.current.copy(alpha = 0.6f),
+                        )
+                    }
                 }
             }
         }

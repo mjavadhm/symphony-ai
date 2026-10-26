@@ -36,6 +36,7 @@ class Symphony(application: Application) : AndroidViewModel(application), Sympho
     val semanticSearch = io.github.zyrouge.symphony.services.search.SemanticSearchEngine(this)
     val recommendation = io.github.zyrouge.symphony.services.recommendation.RecommendationEngine(this)
     val flow = io.github.zyrouge.symphony.services.flow.FlowAnalyzer(this)
+    val songCompanion = io.github.zyrouge.symphony.services.companion.SongCompanion(this)
     val lyricsManager = io.github.zyrouge.symphony.services.lyrics.LyricsManager(this)
     val llm = LlmClient(this)
     val llmTasks = LlmTasks(this)
@@ -62,7 +63,7 @@ class Symphony(application: Application) : AndroidViewModel(application), Sympho
     val applicationContext get() = getApplication<Application>().applicationContext
     var closeApp: (() -> Unit)? = null
     private var isReady = false
-    private var hooks = listOf(this, radio, groove, semanticSearch, lyricsManager)
+    private var hooks = listOf(this, radio, groove, semanticSearch, lyricsManager, songCompanion)
 
     internal fun emitReady() {
         if (isReady) {

@@ -61,6 +61,12 @@ fun BaseView(symphony: Symphony, activity: MainActivity) {
                 navController = navController,
                 startDestination = HomeViewRoute,
             ) {
+                baseComposable<io.github.zyrouge.symphony.ui.view.companion.SongCompanionRoute> {
+                    io.github.zyrouge.symphony.ui.view.companion.SongCompanionView(context, it.toRoute())
+                }
+                baseComposable<io.github.zyrouge.symphony.ui.view.companion.CompanionSettingsRoute> {
+                    io.github.zyrouge.symphony.ui.view.companion.CompanionSettingsView(context)
+                }
                 baseComposable<HomeViewRoute> {
                     HomeView(context)
                 }

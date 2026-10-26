@@ -5,6 +5,7 @@ import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.ui.draw.blur
 import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Spacer
@@ -77,10 +78,16 @@ fun TimedContentText(
     padding: PaddingValues,
     style: TimedContentTextStyle,
     onSeek: (Int) -> Unit,
+    translations: Map<Int, String> = emptyMap(),
+    displayMode: String = "ORIGINAL",
+    annotated: Set<Int> = emptySet(),
+    onLongPress: ((Int) -> Unit)? = null,
 ) {
     val coroutineScope = rememberCoroutineScope()
     val scrollState = rememberLazyListState()
     val currentPosition by rememberUpdatedState(duration)
+    val currentSeek by rememberUpdatedState(onSeek)
+    val currentLongPress by rememberUpdatedState(onLongPress)
     val visibleRange by remember {
         derivedStateOf {
             val start = scrollState.firstVisibleItemIndex
@@ -88,9 +95,9 @@ fun TimedContentText(
             start to end
         }
     }
-    var activeIndex by remember { mutableIntStateOf(-1) }
+    var activeIndex by remember(content) { mutableIntStateOf(-1) }
 
-    LaunchedEffect(LocalContext.current) {
+    LaunchedEffect(content) {
         snapshotFlow { currentPosition }
             .distinctUntilChanged()
             .collect {
@@ -98,10 +105,7 @@ fun TimedContentText(
                     return@collect
                 }
                 val isActiveIndexInvisible = activeIndex > -1 && visibleRange.run {
-                    activeIndex < first && activeIndex > second
-                }
-                if (isActiveIndexInvisible) {
-                    return@collect
+                    activeIndex + 1 < first || activeIndex + 1 > second
                 }
                 val nActiveIndex = content.pairs.indexOfLast { x ->
                     x.first <= currentPosition
@@ -110,7 +114,7 @@ fun TimedContentText(
                     return@collect
                 }
                 activeIndex = nActiveIndex
-                if (scrollState.isScrollInProgress) {
+                if (scrollState.isScrollInProgress || isActiveIndexInvisible) {
                     return@collect
                 }
                 coroutineScope.launch {
@@ -153,27 +157,30 @@ fun TimedContentText(
                 label = "timed-content-line-blur",
             )
 
-            Text(
-                x.second,
+            Column(
                 modifier = Modifier
                     .animateItem()
                     .fillMaxWidth()
                     .blur(lineBlur)
-                    .pointerInput(Unit) {
-                        detectTapGestures { _ ->
+                    .pointerInput(content, i) {
+                        detectTapGestures(onLongPress = { currentLongPress?.invoke(i) }, onTap = { _ ->
                             if (!content.isSynced) {
                                 return@detectTapGestures
                             }
-                            onSeek(i)
+                            currentSeek(i)
                             activeIndex = i
                             coroutineScope.launch {
                                 val scrollIndex = calculateRelaxedScrollIndex(i, visibleRange)
                                 scrollState.animateScrollToItem(scrollIndex)
                             }
-                        }
+                        })
                     },
-                style = textStyle,
-            )
+            ) {
+                val translated = translations[i]
+                if (displayMode != "TRANSLATION" || translated == null) Text(x.second, style = textStyle)
+                if (displayMode != "ORIGINAL" && translated != null) Text(translated, style = textStyle.copy(fontSize = textStyle.fontSize * 0.8f))
+                if (i in annotated) Text("✦ Line note · hold to read", style = textStyle.copy(fontSize = textStyle.fontSize * 0.55f))
+            }
         }
         item {
             Spacer(modifier = Modifier.height(padding.calculateBottomPadding()))
@@ -183,7 +190,7 @@ fun TimedContentText(
 
 private fun calculateRelaxedScrollIndex(target: Int, range: Pair<Int, Int>): Int {
     val relaxLines = (range.second - range.first).floorDiv(3)
-    return max(0, target - relaxLines)
+    return max(0, target + 1 - relaxLines) // first lazy item is the top spacer
 }
 
 // taken from https://www.sinasamaki.com/animating-fonts-in-jetpack-compose/

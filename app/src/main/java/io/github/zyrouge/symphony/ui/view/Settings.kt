@@ -154,6 +154,12 @@ fun SettingsView(context: ViewContext, route: SettingsViewRoute) {
                         }
                         SettingsGlassGroup {
                             SettingsSimpleTile(
+                                icon = { Icon(Icons.Filled.AutoAwesome, null) },
+                                title = { Text("Song Companion") },
+                                onClick = { context.navController.navigate(io.github.zyrouge.symphony.ui.view.companion.CompanionSettingsRoute) },
+                            )
+                            SettingsGlassDivider()
+                            SettingsSimpleTile(
                                 icon = { Icon(Icons.Filled.LibraryMusic, null) },
                                 title = { Text(context.symphony.t.Groove) },
                                 onClick = {
