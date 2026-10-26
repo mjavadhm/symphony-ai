@@ -36,6 +36,9 @@ import io.github.zyrouge.symphony.utils.TimedContent
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.collectLatest
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import kotlinx.coroutines.launch
 import java.util.Timer
 import kotlin.concurrent.timer
@@ -53,6 +56,7 @@ fun LyricsText(
         )
     }
     var playbackPositionTimer: Timer? = remember { null }
+    val lyricsRevision by context.symphony.lyricsManager.revision.collectAsState()
     val queue by context.symphony.radio.observatory.queue.collectAsState()
     val queueIndex by context.symphony.radio.observatory.queueIndex.collectAsState()
     val song by remember(queue, queueIndex) {
@@ -73,19 +77,20 @@ fun LyricsText(
                 }
             },
             async {
-                snapshotFlow { song }
+                snapshotFlow { song to lyricsRevision }
                     .distinctUntilChanged()
-                    .collect { song ->
+                    .collectLatest { (song, _) ->
                         lyricsState = 1
                         lyricsSongId = song?.id
-                        coroutineScope.launch {
-                            lyrics = song?.let { song ->
+                        lyrics = null
+                        lyrics = withContext(Dispatchers.IO) {
+                            song?.let { song ->
                                 context.symphony.groove.song.getLyrics(song)?.let {
                                     TimedContent.fromLyrics(it)
                                 }
                             }
-                            lyricsState = 2
                         }
+                        lyricsState = 2
                     }
             }
         )

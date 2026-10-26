@@ -1,11 +1,29 @@
 #include <jni.h>
 #include <string>
+#include <vector>
+#include <unistd.h>
 #include "android/log_macros.h"
 #include "tfile.h"
 #include "tfilestream.h"
 #include "tpropertymap.h"
 #include "fileref.h"
 #include "TagLibHelper.h"
+
+
+// NewStringUTF expects modified UTF-8 and corrupts supplementary Unicode (e.g. emoji).
+static jstring toJavaString(JNIEnv *env, const TagLib::String &value) {
+    std::vector<jchar> utf16;
+    for (const auto wc : value.toWString()) {
+        auto cp = static_cast<unsigned int>(wc);
+        if (cp <= 0xFFFF) utf16.push_back(static_cast<jchar>(cp));
+        else {
+            cp -= 0x10000;
+            utf16.push_back(static_cast<jchar>(0xD800 + (cp >> 10)));
+            utf16.push_back(static_cast<jchar>(0xDC00 + (cp & 0x3FF)));
+        }
+    }
+    return env->NewString(utf16.data(), static_cast<jsize>(utf16.size()));
+}
 
 jclass audioMetadataParserClass = nullptr;
 jmethodID audioMetadataParserPutTagMethodId = nullptr;
@@ -55,12 +73,19 @@ Java_me_zyrouge_symphony_metaphony_AudioMetadataParser_readMetadata(
         jobject thiz,
         jstring filename,
         jint fd) {
-    const auto stream = std::make_unique<TagLib::FileStream>(fd, true);
+    const int ownedFd = dup(fd);
+    if (ownedFd < 0) return JNI_FALSE;
+    const auto stream = std::make_unique<TagLib::FileStream>(ownedFd, true);
+    if (!stream->isOpen()) { close(ownedFd); return JNI_FALSE; }
+    stream->seek(0);
+    const char *name = env->GetStringUTFChars(filename, nullptr);
+    if (!name) return JNI_FALSE;
     const auto rawFile = TagLibHelper::detectParser(
-            env->GetStringUTFChars(filename, nullptr),
+            name,
             stream.get(),
             true,
             TagLib::AudioProperties::ReadStyle::Accurate);
+    env->ReleaseStringUTFChars(filename, name);
     if (!rawFile) {
         return static_cast<jboolean>(false);
     }
@@ -71,13 +96,15 @@ Java_me_zyrouge_symphony_metaphony_AudioMetadataParser_readMetadata(
             for (const auto &[key, values]: tags) {
                 const auto jKey = env->NewStringUTF(key.toCString(true));
                 for (const auto &value: values) {
-                    const auto jValue = env->NewStringUTF(value.toCString(true));
+                    const auto jValue = toJavaString(env, value);
                     env->CallVoidMethod(
                             thiz,
                             audioMetadataParserPutTagMethodId,
                             jKey,
                             jValue);
+                    env->DeleteLocalRef(jValue);
                 }
+                env->DeleteLocalRef(jKey);
             }
         }
         const auto picture = file->complexProperties("PICTURE");
@@ -100,6 +127,9 @@ Java_me_zyrouge_symphony_metaphony_AudioMetadataParser_readMetadata(
                     jPictureType,
                     jMimeType,
                     jData);
+            env->DeleteLocalRef(jPictureType);
+            env->DeleteLocalRef(jMimeType);
+            env->DeleteLocalRef(jData);
         }
     }
     const auto audioProperties = file->audioProperties();

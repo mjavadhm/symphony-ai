@@ -141,7 +141,14 @@ class SongRepository(private val symphony: Symphony) {
                     return String(it.readBytes())
                 }
             }
-            return symphony.database.lyricsCache.get(song.id)
+            symphony.database.lyricsCache.get(song.id)?.takeIf { it.isNotBlank() }?.let { return it }
+            // Also handle lyrics embedded since the last library scan.
+            return symphony.applicationContext.contentResolver.openFileDescriptor(song.uri, "r")?.use { descriptor ->
+                me.zyrouge.symphony.metaphony.AudioMetadataParser.parse(song.filename, descriptor.fd)
+                    ?.lyrics?.takeIf { it.isNotBlank() }?.also {
+                        symphony.database.lyricsCache.put(song.id, it)
+                    }
+            }
         } catch (err: Exception) {
             Logger.error("LyricsRepository", "fetch lyrics failed", err)
         }
