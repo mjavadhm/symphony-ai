@@ -261,6 +261,13 @@ fun SettingsView(context: ViewContext, route: SettingsViewRoute) {
                                 },
                             )
                         }
+                        SettingsGlassGroup {
+                            SettingsSimpleTile(
+                                icon = { Icon(Icons.Filled.FindInPage, null) },
+                                title = { Text("Diagnostics & reports") },
+                                onClick = { context.navController.navigate(io.github.zyrouge.symphony.ui.view.settings.DiagnosticsSettingsRoute) },
+                            )
+                        }
                         Spacer(modifier = Modifier.height(4.dp))
                     }
                 },

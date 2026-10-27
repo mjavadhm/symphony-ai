@@ -97,6 +97,9 @@ fun BaseView(symphony: Symphony, activity: MainActivity) {
                 baseComposable<LyricsViewRoute> {
                     LyricsView(context)
                 }
+                baseComposable<io.github.zyrouge.symphony.ui.view.settings.DiagnosticsSettingsRoute> {
+                    io.github.zyrouge.symphony.ui.view.settings.DiagnosticsSettingsView(context)
+                }
                 baseComposable<SettingsViewRoute> {
                     SettingsView(context, it.toRoute())
                 }

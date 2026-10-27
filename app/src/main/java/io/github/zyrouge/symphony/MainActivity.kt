@@ -24,12 +24,6 @@ class MainActivity : ComponentActivity() {
             }
         }
 
-        Thread.setDefaultUncaughtExceptionHandler { _, err ->
-            Logger.error("MainActivity", "uncaught exception", err)
-            ErrorActivity.start(this, err)
-            finish()
-        }
-
         val symphony: Symphony by viewModels()
         symphony.permission.handle(this)
         gSymphony = symphony

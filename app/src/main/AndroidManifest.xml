@@ -12,6 +12,7 @@
         android:maxSdkVersion="28" />
 
     <application
+        android:name=".SymphonyApplication"
         android:allowBackup="true"
         android:dataExtractionRules="@xml/data_extraction_rules"
         android:enableOnBackInvokedCallback="true"
@@ -37,7 +38,7 @@
                 android:name="android.app.lib_name"
                 android:value="" />
         </activity>
-        <activity android:name=".ErrorActivity" />
+        <activity android:name=".ErrorActivity" android:exported="false" android:process=":crash_report" />
 
         <service
             android:name=".services.radio.RadioNotificationService"
