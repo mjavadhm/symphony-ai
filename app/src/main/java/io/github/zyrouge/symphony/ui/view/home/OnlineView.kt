@@ -32,21 +32,24 @@ fun OnlineView(context: ViewContext) {
     var loading by remember { mutableStateOf(false) }
     val downloads = remember { mutableStateMapOf<String, Float?>() }
     val scope = rememberCoroutineScope()
-    val service = remember(context.symphony.settings.onlineServiceBaseUrl.value) {
-        OnlineService(context.symphony.settings.onlineServiceBaseUrl.value)
+    val serverBaseUrl by context.symphony.spotizer.settings.serverBaseUrl.collectAsState()
+    val service = remember(serverBaseUrl) { OnlineService(serverBaseUrl) }
+    LaunchedEffect(serverBaseUrl) {
+        results = emptyList(); hasSearched = false; message = null
     }
     val homePadding = io.github.zyrouge.symphony.ui.components.LocalHomeContentPadding.current
 
     fun search() {
         if (query.isBlank() || loading) return
+        val requestedServer = serverBaseUrl
         scope.launch {
             loading = true
             hasSearched = true
             message = null
             results = emptyList()
             runCatching { service.search(query.trim(), searchType) }
-                .onSuccess { results = it }
-                .onFailure { message = it.message ?: "Spotizer is unavailable" }
+                .onSuccess { if (serverBaseUrl == requestedServer) results = it }
+                .onFailure { if (serverBaseUrl == requestedServer) message = it.message ?: "Spotizer is unavailable" }
             loading = false
         }
     }

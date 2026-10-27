@@ -7,7 +7,7 @@ import kotlinx.coroutines.flow.StateFlow
 
 class SpotizerSettings(context: Context) {
     companion object {
-        const val DEFAULT_SERVER_BASE_URL = "https://api.spotizer.javadhm.online"
+        const val DEFAULT_SERVER_BASE_URL = SpotizerServer.DEFAULT
 
         private const val KEY_DOWNLOAD_QUALITY = "download_quality"
         private const val KEY_STREAM_QUALITY = "stream_quality"
@@ -80,14 +80,41 @@ class SpotizerSettings(context: Context) {
         _downloadFolderName.value = value
     }
 
-    private val _serverBaseUrl = MutableStateFlow(
-        prefs.getString(KEY_SERVER_BASE_URL, DEFAULT_SERVER_BASE_URL) ?: DEFAULT_SERVER_BASE_URL
-    )
+    private val _serverBaseUrl = MutableStateFlow(run {
+        val previous = prefs.getString(KEY_SERVER_BASE_URL, null)
+        val migrated = prefs.getBoolean("server_url_migrated_v2", false)
+        val effective = if (migrated) runCatching { SpotizerServer.normalize(previous.orEmpty()) }.getOrDefault(DEFAULT_SERVER_BASE_URL)
+            else SpotizerServer.migrate(previous, context.getSharedPreferences("settings", Context.MODE_PRIVATE)
+                .getString("online_service_base_url", null))
+        prefs.edit().apply {
+            putString(KEY_SERVER_BASE_URL, effective)
+            putBoolean("server_url_migrated_v2", true)
+            val previousServer = runCatching { SpotizerServer.normalize(previous ?: SpotizerServer.LEGACY_SPOTIZER_DEFAULT) }.getOrNull()
+            if (effective != previousServer) {
+                remove(KEY_USER_ID); remove(KEY_CLIENT_KEY)
+            }
+        }.apply()
+        effective
+    })
     val serverBaseUrl: StateFlow<String> = _serverBaseUrl
 
+    @Synchronized
     fun setServerBaseUrl(value: String) {
-        prefs.edit().putString(KEY_SERVER_BASE_URL, value).apply()
-        _serverBaseUrl.value = value
+        val normalized = SpotizerServer.normalize(value)
+        if (normalized == _serverBaseUrl.value) return
+        // Server identities and credentials must never leak into a different backend.
+        prefs.edit().putString(KEY_SERVER_BASE_URL, normalized)
+            .remove(KEY_USER_ID).remove(KEY_CLIENT_KEY).apply()
+        _userId.value = ""
+        _clientKey.value = ""
+        _serverBaseUrl.value = normalized
+    }
+
+    @Synchronized
+    fun setUserIdForServer(server: String, value: String): Boolean {
+        if (_serverBaseUrl.value != server) return false
+        setUserId(value)
+        return true
     }
 
     private val _userId = MutableStateFlow(prefs.getString(KEY_USER_ID, "") ?: "")
