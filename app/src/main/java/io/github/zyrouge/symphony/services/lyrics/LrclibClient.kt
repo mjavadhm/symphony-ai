@@ -14,7 +14,7 @@ import kotlin.coroutines.resumeWithException
 class LyricsApiException(val code: Int, val retryAfterMs: Long = 0) : IOException("Lyrics API HTTP $code")
 
 /** A configurable LRCLIB-compatible root URL, not a universal lyrics-provider protocol. */
-class LrclibClient(private val http: OkHttpClient = OkHttpClient.Builder()
+class LrclibClient(private val http: OkHttpClient = OkHttpClient.Builder().addInterceptor(io.github.zyrouge.symphony.services.diagnostics.DiagnosticInterceptor("lyrics"))
     .connectTimeout(15, TimeUnit.SECONDS).readTimeout(25, TimeUnit.SECONDS)
     .callTimeout(35, TimeUnit.SECONDS).followRedirects(false).build(),
     val gate: LyricsRequestGate = LyricsRequestGate(),

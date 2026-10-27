@@ -73,7 +73,7 @@ class SongCompanion(private val symphony: Symphony) : Symphony.Hooks {
             job = scope.launch {
                 try { block(); mutableTask.value = CompanionTask(false, trackId, "Saved locally") }
                 catch (e: CancellationException) { mutableTask.value = CompanionTask(false, trackId, "Stopped"); throw e }
-                catch (e: Exception) { mutableTask.value = CompanionTask(false, trackId, e.message ?: "Operation failed", error = true) }
+                catch (e: Exception) { io.github.zyrouge.symphony.services.diagnostics.Diagnostics.event("ERROR", "companion", "operation_failed", e); mutableTask.value = CompanionTask(false, trackId, e.message ?: "Operation failed", error = true) }
             }
         }
     }
@@ -161,7 +161,7 @@ class SongCompanion(private val symphony: Symphony) : Symphony.Hooks {
                     target = target, language = language, revisionId = revisionId))
             }
         } catch (e: CancellationException) { throw e }
-        catch (e: Exception) {
+        catch (e: Exception) { io.github.zyrouge.symphony.services.diagnostics.Diagnostics.event("ERROR", "companion", "operation_failed", e);
             dao.insertMessage(CompanionMessage(trackId = trackId, role = "error", text = (e.message ?: "Request failed").take(12000),
                 section = section.name, target = target, language = language)); throw e
         }

@@ -12,7 +12,7 @@ import kotlin.coroutines.resumeWithException
 
 data class CompanionReference(val title: String, val url: String, val excerpt: String)
 class CompanionReferences {
-    private val http = OkHttpClient.Builder().callTimeout(25, TimeUnit.SECONDS).followRedirects(false).build()
+    private val http = OkHttpClient.Builder().addInterceptor(io.github.zyrouge.symphony.services.diagnostics.DiagnosticInterceptor("references")).callTimeout(25, TimeUnit.SECONDS).followRedirects(false).build()
     companion object {
         fun validUrl(value: String): Boolean = value.toHttpUrlOrNull()?.let {
             it.isHttps && it.username.isEmpty() && it.password.isEmpty()

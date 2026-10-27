@@ -82,7 +82,7 @@ class LyricsManager(private val symphony: Symphony) : Symphony.Hooks {
                     } else it
                 }) }
                 throw e
-            } catch (e: Exception) { mutableState.update { it.copy(progress = e.message ?: "Operation failed") } }
+            } catch (e: Exception) { io.github.zyrouge.symphony.services.diagnostics.Diagnostics.event("ERROR", "lyrics", "operation_failed", e); mutableState.update { it.copy(progress = e.message ?: "Operation failed") } }
             finally {
                 // Persist only settled results, never an interrupted queue or write state.
                 mutableState.value.items.forEach { sessionItems[it.song.uri.toString()] = signature(it.song) to it }
@@ -113,7 +113,7 @@ class LyricsManager(private val symphony: Symphony) : Symphony.Hooks {
             try {
                 update(inspect(song))
             } catch (e: CancellationException) { throw e }
-            catch (e: Exception) { update(Item(song, Status.FAILED, message = "Could not inspect local file: ${e.message}")) }
+            catch (e: Exception) { io.github.zyrouge.symphony.services.diagnostics.Diagnostics.event("ERROR", "lyrics", "operation_failed", e); update(Item(song, Status.FAILED, message = "Could not inspect local file: ${e.message}")) }
         }
         mutableState.update { it.copy(scanned = true, progress = "Local scan complete. Select missing songs, then Search selected. No provider was contacted.") }
     }
@@ -176,7 +176,7 @@ class LyricsManager(private val symphony: Symphony) : Symphony.Hooks {
                 update(item.copy(status = if (candidate == null) Status.NOT_FOUND else Status.READY, candidate = candidate,
                     message = if (cached != null) "Cached result · use Refresh selected online to check again" else ""))
             } catch (e: CancellationException) { throw e }
-            catch (e: Exception) { update(item.copy(status = Status.FAILED, message = e.message ?: "Search failed", missing = true)) }
+            catch (e: Exception) { io.github.zyrouge.symphony.services.diagnostics.Diagnostics.event("ERROR", "lyrics", "operation_failed", e); update(item.copy(status = Status.FAILED, message = e.message ?: "Search failed", missing = true)) }
         }
         mutableState.update { it.copy(progress = "Search complete. Review the selected matches, then embed them.") }
     }
@@ -203,9 +203,9 @@ class LyricsManager(private val symphony: Symphony) : Symphony.Hooks {
                     update(item.copy(status = if (written) Status.EMBEDDED else Status.EXISTING, message = "", missing = false, writeError = false, accessRequired = false))
                 }
             } catch (e: CancellationException) { throw e }
-            catch (e: SecurityException) {
+            catch (e: SecurityException) { io.github.zyrouge.symphony.services.diagnostics.Diagnostics.event("ERROR", "lyrics", "write_access_denied", e);
                 update(item.copy(message = "Grant write access to this music folder, then retry", writeError = true, accessRequired = true))
-            } catch (e: Exception) {
+            } catch (e: Exception) { io.github.zyrouge.symphony.services.diagnostics.Diagnostics.event("ERROR", "lyrics", "operation_failed", e);
                 update(item.copy(message = if (LyricsWriteErrors.isAccess(e)) "Write access denied. Grant access to this music folder, then retry." else e.message ?: "Embed failed; retry", writeError = true, accessRequired = LyricsWriteErrors.isAccess(e)))
                 if (store.recoveries().isNotEmpty()) throw e
             }
