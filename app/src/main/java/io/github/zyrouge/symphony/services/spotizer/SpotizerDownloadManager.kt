@@ -184,6 +184,10 @@ class SpotizerDownloadManager(
         val job = scope.launch {
             gate.withPermit {
                 runCatching { process(itemId) }.onFailure { failure ->
+                    if (failure is kotlinx.coroutines.CancellationException) throw failure
+                    io.github.zyrouge.symphony.services.diagnostics.Diagnostics.event(
+                        "ERROR", "spotizer", "download_or_save_failed", failure,
+                    )
                     if (currentItem(itemId)?.isActive == true) {
                         update(itemId) {
                             it.copy(
@@ -321,6 +325,8 @@ class SpotizerDownloadManager(
 
                 else -> {
                     val code = response.code
+                    val requestId = io.github.zyrouge.symphony.services.diagnostics.DiagnosticPrivacy.requestId(response.header("X-Request-ID"))
+                        ?: io.github.zyrouge.symphony.services.diagnostics.DiagnosticPrivacy.requestId(response.request.header("X-Request-ID"))
                     response.close()
                     update(itemId) {
                         it.copy(phase = Phase.Failed, error = "Download failed with HTTP " + code)

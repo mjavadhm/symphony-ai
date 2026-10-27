@@ -13,7 +13,7 @@ import java.util.concurrent.TimeUnit
 class SpotizerApiException(val statusCode: Int, message: String) : Exception(message)
 
 class SpotizerClient(private val settings: SpotizerSettings) {
-    val http: OkHttpClient = OkHttpClient.Builder()
+    val http: OkHttpClient = OkHttpClient.Builder().addInterceptor(io.github.zyrouge.symphony.services.diagnostics.DiagnosticInterceptor("spotizer"))
         .connectTimeout(20, TimeUnit.SECONDS)
         .readTimeout(120, TimeUnit.SECONDS)
         .writeTimeout(120, TimeUnit.SECONDS)
