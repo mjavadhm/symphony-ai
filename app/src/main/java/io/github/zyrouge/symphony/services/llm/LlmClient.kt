@@ -62,8 +62,7 @@ class LlmClient(private val symphony: Symphony) {
     }
 
     var songStoryPrompt: String
-        get() = prefs.getString("tpl_song_story", null)?.takeIf { it.isNotBlank() }
-            ?: io.github.zyrouge.symphony.services.companion.SongStoryPrompt.DEFAULT
+        get() = io.github.zyrouge.symphony.services.companion.SongStoryPrompt.effective(prefs.getString("tpl_song_story", null))
         set(value) {
             require(value.length <= 16000) { "Writing prompt is too long" }
             prefs.edit().putString("tpl_song_story", value).apply()

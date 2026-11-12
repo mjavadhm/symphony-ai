@@ -53,8 +53,58 @@ class CompanionCoreTest {
         val story = """{"paragraphs":[{"text":"A claim","sourceIds":["unknown"]}]}"""
         assertThrows(IllegalArgumentException::class.java) { validate(CompanionSection.STORY, story, sources = setOf("known")) }
     }
-    @Test fun `story requires evidence`() {
-        assertThrows(IllegalArgumentException::class.java) { validate(CompanionSection.STORY, """{"paragraphs":[{"text":"A claim","sourceIds":[]}]}""") }
+    @Test fun `story from model knowledge needs no sources`() {
+        val story = """{"basis":"known","paragraphs":[{"text":"Written after the birth of his son"}]}"""
+        assertEquals(story, validate(CompanionSection.STORY, story))
+    }
+    @Test fun `story basis must be known or lyrics`() {
+        assertThrows(IllegalArgumentException::class.java) { validate(CompanionSection.STORY, """{"basis":"certain","paragraphs":[{"text":"A"}]}""") }
+    }
+    @Test fun `story needs at least one non-empty paragraph`() {
+        assertThrows(IllegalArgumentException::class.java) { validate(CompanionSection.STORY, """{"basis":"known","paragraphs":[]}""") }
+        assertThrows(IllegalArgumentException::class.java) { validate(CompanionSection.STORY, """{"basis":"known","paragraphs":[{"text":" "}]}""") }
+    }
+    @Test fun `model story with plain paragraphs is normalized`() {
+        val normalized = CompanionCore.normalizeStory(CompanionCore.parseObject("""{"basis":"Known","paragraphs":["One","Two"]}"""))
+        assertEquals("""{"basis":"known","paragraphs":[{"text":"One"},{"text":"Two"}]}""", normalized.toString())
+        assertNotNull(validate(CompanionSection.STORY, normalized.toString()))
+    }
+    @Test fun `story without a basis is labelled as interpretation, never as known`() {
+        val normalized = CompanionCore.normalizeStory(CompanionCore.parseObject("""{"paragraphs":[{"text":"One"}]}"""))
+        assertEquals("lyrics", CompanionCore.story(normalized.toString()).basis)
+        val invented = CompanionCore.normalizeStory(CompanionCore.parseObject("""{"basis":"verified","paragraphs":[{"text":"One"}]}"""))
+        assertEquals("lyrics", CompanionCore.story(invented.toString()).basis)
+    }
+    @Test fun `older source-cited stories still load`() {
+        val legacy = """{"paragraphs":[{"text":"From an excerpt","sourceIds":["known"]}]}"""
+        assertNotNull(validate(CompanionSection.STORY, legacy, sources = setOf("known")))
+        assertEquals(CompanionCore.Story(null, listOf("From an excerpt")), CompanionCore.story(legacy))
+    }
+    private fun meaning(vararg lines: Pair<String, String>) = buildJsonObject {
+        put("summary", "About growing up")
+        put("lines", JsonArray(lines.map { (id, text) -> buildJsonObject { put("id", id); put("explanation", text) } }))
+    }.toString()
+    @Test fun `meaning explains only selected existing lines`() {
+        val payload = meaning(snapshot.lines[1].id to "A metaphor for change")
+        assertNotNull(validate(CompanionSection.MEANING, payload))
+        val parsed = CompanionCore.meaning(payload)
+        assertEquals("About growing up", parsed.summary)
+        assertEquals(mapOf(snapshot.lines[1].id to "A metaphor for change"), parsed.lines)
+    }
+    @Test fun `meaning rejects invented or duplicate line ids`() {
+        assertThrows(IllegalArgumentException::class.java) { validate(CompanionSection.MEANING, meaning("fake" to "X")) }
+        val id = snapshot.lines.first().id
+        assertThrows(IllegalArgumentException::class.java) { validate(CompanionSection.MEANING, meaning(id to "X", id to "Y")) }
+    }
+    @Test fun `meaning with only a summary is valid`() {
+        assertNotNull(validate(CompanionSection.MEANING, """{"summary":"About growing up"}"""))
+        assertTrue(CompanionCore.meaning("""{"summary":"About growing up"}""").lines.isEmpty())
+    }
+    @Test fun `old single-article meaning is recognised and still displays`() {
+        assertTrue(CompanionCore.isLegacyMeaning("""{"text":"Old behind the song article"}"""))
+        assertFalse(CompanionCore.isLegacyMeaning(meaning()))
+        assertEquals("Old behind the song article", CompanionCore.display(CompanionSection.MEANING, """{"text":"Old behind the song article"}"""))
+        assertEquals("About growing up", CompanionCore.display(CompanionSection.MEANING, meaning()))
     }
     @Test fun `story preserves supplied source IDs`() {
         val story = """{"paragraphs":[{"text":"An excerpt summary","sourceIds":["known"]}]}"""

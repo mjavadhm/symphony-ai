@@ -22,10 +22,22 @@ class SongStoryPromptTest {
     @Test fun `multiline legacy source labels are hidden without deleting paragraph text`() {
         assertEquals("Story  continues", SongStoryPrompt.readable("Story [منبع:\n12345678-1234-1234-1234-123456789abc] continues"))
     }
-    @Test fun `default does not pretend to browse or establish uncertain history`() {
-        assertTrue(SongStoryPrompt.DEFAULT.contains("no browsing", ignoreCase = true))
-        assertTrue(SongStoryPrompt.DEFAULT.contains("Do not invent dates"))
+    @Test fun `default asks for the story behind the song, not trivia`() {
+        assertTrue(SongStoryPrompt.DEFAULT.contains("what was happening in the artist's life"))
+        assertTrue(SongStoryPrompt.DEFAULT.contains("who or what it is about"))
         assertTrue(SongStoryPrompt.DEFAULT.contains("2–4 short paragraphs"))
+        assertFalse(SongStoryPrompt.DEFAULT.contains("Wikipedia", ignoreCase = true))
+    }
+    @Test fun `a stored copy of an old built-in default is upgraded`() {
+        SongStoryPrompt.LEGACY_DEFAULTS.forEach { assertEquals(SongStoryPrompt.DEFAULT, SongStoryPrompt.effective(it)) }
+        assertEquals(SongStoryPrompt.DEFAULT, SongStoryPrompt.effective("  " + SongStoryPrompt.LEGACY_DEFAULTS.first() + "\n"))
+    }
+    @Test fun `a prompt the user wrote is kept`() {
+        assertEquals("Tell it like a radio DJ", SongStoryPrompt.effective("Tell it like a radio DJ"))
+    }
+    @Test fun `no stored prompt means the default`() {
+        assertEquals(SongStoryPrompt.DEFAULT, SongStoryPrompt.effective(null))
+        assertEquals(SongStoryPrompt.DEFAULT, SongStoryPrompt.effective("   "))
     }
     @Test fun `Persian prose starting with English title reads RTL`() {
         assertTrue(ReadingDirection.isRtl("TOOL این آهنگ دربارهٔ تغییر و رشد انسان است و داستانی شنیدنی دارد"))
