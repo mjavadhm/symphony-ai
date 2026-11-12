@@ -34,6 +34,8 @@ include_directories(taglib/taglib
 
 add_library(${CMAKE_PROJECT_NAME} SHARED
         AudioMetadataParser.cpp
+        AudioMetadataWriter.cpp
+        LyricsWriter.cpp
         TagLibHelper.cpp)
 
 target_link_libraries(${CMAKE_PROJECT_NAME}

@@ -59,15 +59,24 @@ class RadioShorty(private val symphony: Symphony) {
         }
     }
 
+    /**
+     * Song radio: start an endless station seeded from one song.
+     * Clears the queue, plays the seed song, switches to Autoplay loop mode and
+     * prefetches a first batch of similar songs so the upcoming queue is visible.
+     */
+    fun startRadio(songId: String) = symphony.radio.startSongRadio(songId)
+
     fun playQueue(
         songIds: List<String>,
         options: Radio.PlayOptions = Radio.PlayOptions(),
         shuffle: Boolean = false,
+        source: String = "queue",
     ) {
         symphony.radio.stop(ended = false)
         if (songIds.isEmpty()) {
             return
         }
+        symphony.radio.playbackSource = source
         symphony.radio.queue.add(
             songIds,
             options = options.run {
@@ -81,7 +90,8 @@ class RadioShorty(private val symphony: Symphony) {
         songId: String,
         options: Radio.PlayOptions = Radio.PlayOptions(),
         shuffle: Boolean = false,
-    ) = playQueue(listOf(songId), options = options, shuffle = shuffle)
+        source: String = "queue",
+    ) = playQueue(listOf(songId), options = options, shuffle = shuffle, source = source)
 
     fun playQueueSmart(songIds: List<String>) {
         symphony.radio.stop(ended = false)

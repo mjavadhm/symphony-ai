@@ -121,6 +121,7 @@ fun SpotizerSettingsView(context: ViewContext) {
                 .padding(contentPadding)
                 .padding(vertical = 8.dp),
         ) {
+            SpotizerSettingsGroup(title = "Server") { SpotizerServerEditor(settings) }
             SpotizerSettingsGroup(title = "Download quality") {
                 SpotizerQuality.all.forEach { quality ->
                     QualityRadioRow(

@@ -341,7 +341,7 @@ private fun NowPlayingLyricsMode(
             }
         }
         Spacer(modifier = Modifier.height(8.dp))
-        // Lyrics without a panel — drawn straight onto the background, with faded edges
+        // Lyrics/about switch is opaque; the lyric renderer owns its content fade.
         val base = MaterialTheme.typography.titleLarge.copy(
             fontWeight = FontWeight.Bold,
             lineHeight = 34.sp,
@@ -351,19 +351,6 @@ private fun NowPlayingLyricsMode(
             modifier = Modifier
                 .weight(1f)
                 .fillMaxWidth()
-                .graphicsLayer { compositingStrategy = CompositingStrategy.Offscreen }
-                .drawWithContent {
-                    drawContent()
-                    drawRect(
-                        brush = Brush.verticalGradient(
-                            0f to Color.Transparent,
-                            0.08f to Color.Black,
-                            0.92f to Color.Black,
-                            1f to Color.Transparent,
-                        ),
-                        blendMode = BlendMode.DstIn,
-                    )
-                },
         ) {
             LyricsText(
                 context,

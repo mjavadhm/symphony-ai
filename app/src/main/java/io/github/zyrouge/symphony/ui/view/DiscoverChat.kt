@@ -545,9 +545,9 @@ private fun ResultsBlock(
                 visible.forEach { songId ->
                     context.symphony.groove.song.get(songId)?.let { song ->
                         SongCard(context, song) {
-                            context.symphony.radio.playbackSource = "discover_chat"
                             context.symphony.radio.shorty.playQueue(
                                 item.songIds,
+                                source = "discover_chat",
                                 options = Radio.PlayOptions(
                                     index = item.songIds.indexOf(songId),
                                 ),
@@ -575,8 +575,7 @@ private fun ResultsBlock(
                     horizontalArrangement = Arrangement.spacedBy(4.dp),
                 ) {
                     TextButton(onClick = {
-                        context.symphony.radio.playbackSource = "discover_chat"
-                        context.symphony.radio.shorty.playQueue(item.songIds)
+                        context.symphony.radio.shorty.playQueue(item.songIds, source = "discover_chat")
                     }) { Text("Play all") }
                     TextButton(onClick = onSaveToPlaylist) { Text("Save") }
                     when {

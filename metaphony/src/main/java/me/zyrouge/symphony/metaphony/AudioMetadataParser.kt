@@ -63,6 +63,7 @@ class AudioMetadataParser private constructor() {
             System.loadLibrary("metaphony")
         }
 
+        /** Borrows a seekable descriptor. The caller retains ownership and must close it. */
         fun parse(filename: String, fd: Int): AudioMetadata? {
             val parser = AudioMetadataParser()
             val success = parser.readMetadata(filename, fd)

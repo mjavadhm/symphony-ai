@@ -131,17 +131,30 @@ class SongRepository(private val symphony: Symphony) {
         fallback = Assets.getPlaceholderId(symphony),
     )
 
+    /** Read-only sidecar lookup, also used by the offline missing-lyrics inventory. */
+    fun getSidecarLyrics(song: Song): String? {
+        val lrcPath = SimplePath(song.path).let {
+            it.parent?.join(it.nameWithoutExtension + ".lrc")?.pathString
+        }
+        symphony.groove.exposer.uris[lrcPath]?.let { uri ->
+            symphony.applicationContext.contentResolver.openInputStream(uri)?.use {
+                return String(it.readBytes()).takeIf(String::isNotBlank)
+            }
+        }
+        return null
+    }
+
     suspend fun getLyrics(song: Song): String? {
         try {
-            val lrcPath = SimplePath(song.path).let {
-                it.parent?.join(it.nameWithoutExtension + ".lrc")?.pathString
+            getSidecarLyrics(song)?.let { return it }
+            symphony.database.lyricsCache.get(song.id)?.takeIf { it.isNotBlank() }?.let { return it }
+            // Also handle lyrics embedded since the last library scan.
+            return symphony.applicationContext.contentResolver.openFileDescriptor(song.uri, "r")?.use { descriptor ->
+                me.zyrouge.symphony.metaphony.AudioMetadataParser.parse(song.filename, descriptor.fd)
+                    ?.lyrics?.takeIf { it.isNotBlank() }?.also {
+                        symphony.database.lyricsCache.put(song.id, it)
+                    }
             }
-            symphony.groove.exposer.uris[lrcPath]?.let { uri ->
-                symphony.applicationContext.contentResolver.openInputStream(uri)?.use {
-                    return String(it.readBytes())
-                }
-            }
-            return symphony.database.lyricsCache.get(song.id)
         } catch (err: Exception) {
             Logger.error("LyricsRepository", "fetch lyrics failed", err)
         }

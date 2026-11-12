@@ -18,6 +18,7 @@ class SpotizerUserManager(
      */
     @SuppressLint("HardwareIds")
     suspend fun ensureUser(): String? = mutex.withLock {
+        val server = settings.serverBaseUrl.value
         val cached = settings.userId.value
         if (cached.isNotBlank()) {
             return cached
@@ -34,7 +35,7 @@ class SpotizerUserManager(
                 platformUserId = "android_" + androidId,
                 displayName = "Symphony Android",
             )
-            user.userId?.toString()?.also { settings.setUserId(it) }
+            user.userId?.toString()?.takeIf { settings.setUserIdForServer(server, it) }
         }.getOrNull()
     }
 

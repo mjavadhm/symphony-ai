@@ -13,6 +13,7 @@ android {
 
     defaultConfig {
         applicationId = "io.github.zyrouge.symphony"
+        testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         minSdk = libs.versions.min.sdk.get().toInt()
         targetSdk = libs.versions.target.sdk.get().toInt()
 
@@ -148,5 +149,7 @@ dependencies {
     debugImplementation(libs.compose.ui.tooling)
     debugImplementation(libs.compose.ui.test.manifest)
 
+    androidTestImplementation(libs.ext.junit)
+    androidTestImplementation("androidx.test:runner:1.6.2")
     testImplementation(libs.junit.jupiter)
 }

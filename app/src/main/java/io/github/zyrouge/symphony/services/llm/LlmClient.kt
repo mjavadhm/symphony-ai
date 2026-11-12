@@ -61,6 +61,14 @@ class LlmClient(private val symphony: Symphony) {
         """.trimIndent()
     }
 
+    var songStoryPrompt: String
+        get() = prefs.getString("tpl_song_story", null)?.takeIf { it.isNotBlank() }
+            ?: io.github.zyrouge.symphony.services.companion.SongStoryPrompt.DEFAULT
+        set(value) {
+            require(value.length <= 16000) { "Writing prompt is too long" }
+            prefs.edit().putString("tpl_song_story", value).apply()
+        }
+
     var chatBehavior: String
         get() = prefs.getString("tpl_chat_behavior", null)
             ?.takeIf { it.isNotBlank() } ?: DEFAULT_CHAT_BEHAVIOR
@@ -118,6 +126,9 @@ class LlmClient(private val symphony: Symphony) {
         if (!isConfigured) {
             return@withContext Result.Error("LLM is not configured")
         }
+        val diagnosticId = java.util.UUID.randomUUID().toString()
+        val diagnosticStart = System.nanoTime()
+        val diagnosticFields = mapOf("request_id" to diagnosticId, "method" to "POST", "route" to "/chat/completions")
         try {
             val messagesJson = JSONArray()
                 .put(JSONObject().put("role", "system").put("content", system))
@@ -132,6 +143,8 @@ class LlmClient(private val symphony: Symphony) {
             val conn = URL("$baseUrl/chat/completions")
                 .openConnection() as HttpURLConnection
             conn.requestMethod = "POST"
+            conn.setRequestProperty("X-Request-ID", diagnosticId)
+            io.github.zyrouge.symphony.services.diagnostics.Diagnostics.event("INFO", "llm", "request_started", fields = diagnosticFields)
             conn.connectTimeout = 15_000
             conn.readTimeout = 60_000
             conn.setRequestProperty("Content-Type", "application/json")
@@ -144,6 +157,8 @@ class LlmClient(private val symphony: Symphony) {
             }
 
             val code = conn.responseCode
+            val serverDiagnosticId = io.github.zyrouge.symphony.services.diagnostics.DiagnosticPrivacy.requestId(conn.getHeaderField("X-Request-ID"))
+            io.github.zyrouge.symphony.services.diagnostics.Diagnostics.event(if (code in 200..299) "INFO" else "ERROR", "llm", "http_response", fields = diagnosticFields + mapOf("status" to code.toString(), "duration_ms" to ((System.nanoTime() - diagnosticStart) / 1000000).toString()) + (serverDiagnosticId?.let { mapOf("server_request_id" to it) } ?: emptyMap()))
             val text = (if (code in 200..299) conn.inputStream else conn.errorStream)
                 ?.bufferedReader()?.use { it.readText() } ?: ""
             conn.disconnect()
@@ -159,6 +174,7 @@ class LlmClient(private val symphony: Symphony) {
                 .getString("content")
             Result.Success(content)
         } catch (e: Exception) {
+            io.github.zyrouge.symphony.services.diagnostics.Diagnostics.event("ERROR", "llm", "request_failed", e, diagnosticFields)
             Logger.error("LlmClient", "request failed", e)
             Result.Error(e.message ?: "Unknown error")
         }
@@ -178,6 +194,9 @@ class LlmClient(private val symphony: Symphony) {
         if (!isConfigured) {
             return@withContext Result.Error("LLM is not configured")
         }
+        val diagnosticId = java.util.UUID.randomUUID().toString()
+        val diagnosticStart = System.nanoTime()
+        val diagnosticFields = mapOf("request_id" to diagnosticId, "method" to "POST", "route" to "/chat/completions")
         try {
             val messagesJson = JSONArray()
                 .put(JSONObject().put("role", "system").put("content", system))
@@ -193,6 +212,8 @@ class LlmClient(private val symphony: Symphony) {
             val conn = URL("$baseUrl/chat/completions")
                 .openConnection() as HttpURLConnection
             conn.requestMethod = "POST"
+            conn.setRequestProperty("X-Request-ID", diagnosticId)
+            io.github.zyrouge.symphony.services.diagnostics.Diagnostics.event("INFO", "llm", "request_started", fields = diagnosticFields)
             conn.connectTimeout = 15_000
             conn.readTimeout = 120_000
             conn.setRequestProperty("Content-Type", "application/json")
@@ -206,6 +227,8 @@ class LlmClient(private val symphony: Symphony) {
             }
 
             val code = conn.responseCode
+            val serverDiagnosticId = io.github.zyrouge.symphony.services.diagnostics.DiagnosticPrivacy.requestId(conn.getHeaderField("X-Request-ID"))
+            io.github.zyrouge.symphony.services.diagnostics.Diagnostics.event(if (code in 200..299) "INFO" else "ERROR", "llm", "http_response", fields = diagnosticFields + mapOf("status" to code.toString(), "duration_ms" to ((System.nanoTime() - diagnosticStart) / 1000000).toString()) + (serverDiagnosticId?.let { mapOf("server_request_id" to it) } ?: emptyMap()))
             if (code !in 200..299) {
                 val err = conn.errorStream?.bufferedReader()?.use { it.readText() } ?: ""
                 conn.disconnect()
@@ -238,6 +261,7 @@ class LlmClient(private val symphony: Symphony) {
             conn.disconnect()
             Result.Success(full.toString())
         } catch (e: Exception) {
+            io.github.zyrouge.symphony.services.diagnostics.Diagnostics.event("ERROR", "llm", "request_failed", e, diagnosticFields)
             Logger.error("LlmClient", "stream request failed", e)
             Result.Error(e.message ?: "Unknown error")
         }

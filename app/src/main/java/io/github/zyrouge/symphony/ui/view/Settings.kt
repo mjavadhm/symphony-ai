@@ -154,6 +154,12 @@ fun SettingsView(context: ViewContext, route: SettingsViewRoute) {
                         }
                         SettingsGlassGroup {
                             SettingsSimpleTile(
+                                icon = { Icon(Icons.Filled.AutoAwesome, null) },
+                                title = { Text("Song Companion") },
+                                onClick = { context.navController.navigate(io.github.zyrouge.symphony.ui.view.companion.CompanionSettingsRoute) },
+                            )
+                            SettingsGlassDivider()
+                            SettingsSimpleTile(
                                 icon = { Icon(Icons.Filled.LibraryMusic, null) },
                                 title = { Text(context.symphony.t.Groove) },
                                 onClick = {
@@ -240,11 +246,26 @@ fun SettingsView(context: ViewContext, route: SettingsViewRoute) {
                             )
                             SettingsGlassDivider()
                             SettingsSimpleTile(
+                                icon = { Icon(Icons.Filled.MusicNote, null) },
+                                title = { Text("Lyrics Manager") },
+                                onClick = {
+                                    context.navController.navigate(io.github.zyrouge.symphony.ui.view.settings.LyricsSettingsViewRoute())
+                                },
+                            )
+                            SettingsGlassDivider()
+                            SettingsSimpleTile(
                                 icon = { Icon(Icons.Filled.SettingsBackupRestore, null) },
                                 title = { Text("Backup & Restore") },
                                 onClick = {
                                     context.navController.navigate(BackupSettingsViewRoute)
                                 },
+                            )
+                        }
+                        SettingsGlassGroup {
+                            SettingsSimpleTile(
+                                icon = { Icon(Icons.Filled.FindInPage, null) },
+                                title = { Text("Diagnostics & reports") },
+                                onClick = { context.navController.navigate(io.github.zyrouge.symphony.ui.view.settings.DiagnosticsSettingsRoute) },
                             )
                         }
                         Spacer(modifier = Modifier.height(4.dp))

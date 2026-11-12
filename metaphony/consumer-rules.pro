@@ -4,3 +4,6 @@
     void putAudioProperty(java.lang.String, int);
     boolean readMetadata(java.lang.String, int);
 }
+-keep class me.zyrouge.symphony.metaphony.AudioMetadataWriter {
+    native <methods>;
+}

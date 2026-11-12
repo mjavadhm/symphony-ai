@@ -9,6 +9,7 @@ import io.github.zyrouge.symphony.services.database.entities.MixFeedback
 import io.github.zyrouge.symphony.services.groove.Song
 import io.github.zyrouge.symphony.services.database.entities.promptList
 import io.github.zyrouge.symphony.utils.Logger
+import kotlinx.coroutines.flow.first
 import kotlin.math.ln
 import kotlin.math.pow
 import kotlin.math.sqrt
@@ -26,6 +27,14 @@ class RecommendationEngine(private val symphony: Symphony) {
         private const val SKIP_EXCLUDE_DAYS = 30L
         private const val KEY_DAILY_DATE = "daily_mixes_date"
         private const val KEY_DAILY_DATA = "daily_mixes_data"
+
+        // Auto hour contexts
+        private const val KEY_AUTO_CONTEXT_IDS = "auto_context_ids"
+        private const val KEY_AUTO_CONTEXTS_REFRESHED_AT = "auto_contexts_refreshed_at"
+        private const val AUTO_CONTEXT_MIN_HISTORY = 40
+        private const val AUTO_CONTEXT_MAX_COUNT = 3
+        // Radio (song-seeded autoplay): fixed weight of the seed song in the query vector
+        private const val RADIO_ANCHOR_WEIGHT = 0.4f
     }
 
     private val prefs
@@ -340,9 +349,195 @@ class RecommendationEngine(private val symphony: Symphony) {
 
     suspend fun seedDefaultContextsIfNeeded() {
         val store = symphony.database.mixContexts
-        if (store.count() > 0) return
-        store.insert(MixContext(name = "Morning", icon = "☀️", startHour = 6, endHour = 11))
-        store.insert(MixContext(name = "Night", icon = "🌙", startHour = 21, endHour = 2))
+        if (store.count() == 0) {
+            // With enough listening history, learn the hours instead of hardcoding them
+            if (maybeRefreshAutoContexts(force = true)) return
+            store.insert(MixContext(name = "Morning", icon = "☀️", startHour = 6, endHour = 11))
+            store.insert(MixContext(name = "Night", icon = "🌙", startHour = 21, endHour = 2))
+            return
+        }
+        // Keep auto contexts in sync with listening habits (throttled internally)
+        maybeRefreshAutoContexts()
+    }
+
+    // ---------------------------------------------------------------
+    // Auto hour contexts: learn active listening hours from history
+    // ---------------------------------------------------------------
+    private val autoContextIds: Set<Long>
+        get() = prefs.getStringSet(KEY_AUTO_CONTEXT_IDS, emptySet())
+            .orEmpty()
+            .mapNotNull { it.toLongOrNull() }
+            .toSet()
+
+    private fun saveAutoContextIds(ids: Set<Long>) {
+        prefs.edit()
+            .putStringSet(KEY_AUTO_CONTEXT_IDS, ids.map { it.toString() }.toSet())
+            .apply()
+    }
+
+    /** Untouched default seeds may be replaced by learned contexts; user contexts may not. */
+    private fun isDefaultSeedContext(ctx: MixContext) = when {
+        ctx.name == "Morning" && ctx.startHour == 6 && ctx.endHour == 11 -> true
+        ctx.name == "Night" && ctx.startHour == 21 && ctx.endHour == 2 -> true
+        else -> false
+    }
+
+    private data class HourBand(val start: Int, val end: Int, val weight: Float, val peak: Int)
+
+    /**
+     * Builds a completion-weighted 24-bin histogram of the last 90 days of playback,
+     * smooths it circularly, and returns up to three contiguous "active" hour bands
+     * (midnight wrap supported).
+     */
+    private suspend fun detectActiveHourBands(): List<HourBand> {
+        val since = System.currentTimeMillis() - 90L * 86_400_000L
+        val history = try {
+            symphony.database.playbackHistory.getHistorySince(since)
+        } catch (e: Exception) { return emptyList() }
+        if (history.size < AUTO_CONTEXT_MIN_HISTORY) return emptyList()
+
+        // Completion-weighted histogram (skips add nothing)
+        val raw = FloatArray(24)
+        for (rec in history) {
+            if (rec.skipped) continue
+            raw[rec.hourOfDay.coerceIn(0, 23)] += rec.completionRate.coerceIn(0f, 1f)
+        }
+        // Circular smoothing so one noisy hour doesn't create or break a band
+        val bins = FloatArray(24)
+        for (h in 0 until 24) {
+            bins[h] = 0.25f * raw[(h + 23) % 24] + 0.5f * raw[h] + 0.25f * raw[(h + 1) % 24]
+        }
+        val mean = bins.sum() / 24f
+        if (mean <= 0f) return emptyList()
+        val active = BooleanArray(24) { bins[it] >= mean * 1.1f }
+
+        val bands = mutableListOf<HourBand>()
+        val visited = BooleanArray(24)
+        for (h in 0 until 24) {
+            if (!active[h] || visited[h]) continue
+            var start = h
+            while (active[(start + 23) % 24] && (start + 23) % 24 != h) start = (start + 23) % 24
+            var end = h
+            while (active[(end + 1) % 24] && (end + 1) % 24 != start) end = (end + 1) % 24
+            var weight = 0f
+            var peak = start
+            var length = 0
+            var i = start
+            while (true) {
+                visited[i] = true
+                weight += bins[i]
+                if (bins[i] > bins[peak]) peak = i
+                length++
+                if (i == end) break
+                i = (i + 1) % 24
+            }
+            // Too short = noise, too long = not a distinct context
+            if (length in 2..10) bands.add(HourBand(start, end, weight, peak))
+        }
+        return bands.sortedByDescending { it.weight }.take(AUTO_CONTEXT_MAX_COUNT)
+    }
+
+    private fun daypartNameAndIcon(hour: Int): Pair<String, String> = when (hour) {
+        in 5..11 -> "Morning" to "☀️"
+        in 12..16 -> "Afternoon" to "🌤️"
+        in 17..20 -> "Evening" to "🌆"
+        21, 22, 23, 0, 1 -> "Night" to "🌙"
+        else -> "Late Night" to "🌃"
+    }
+
+    /**
+     * Learns which hours the user actually listens at and keeps up to three auto
+     * contexts in sync with them. Throttled to once a week unless forced.
+     * User-created contexts are never modified or deleted.
+     * @return true when at least one auto context exists afterwards.
+     */
+    suspend fun maybeRefreshAutoContexts(force: Boolean = false): Boolean {
+        val now = System.currentTimeMillis()
+        val last = prefs.getLong(KEY_AUTO_CONTEXTS_REFRESHED_AT, 0L)
+        if (!force && now - last < 7L * 86_400_000L) return autoContextIds.isNotEmpty()
+
+        val bands = detectActiveHourBands()
+        if (bands.isEmpty()) {
+            // Not enough listening data yet — retry in a day instead of a week
+            prefs.edit().putLong(KEY_AUTO_CONTEXTS_REFRESHED_AT, now - 6L * 86_400_000L).apply()
+            return false
+        }
+        prefs.edit().putLong(KEY_AUTO_CONTEXTS_REFRESHED_AT, now).apply()
+
+        val store = symphony.database.mixContexts
+        val existing = try { store.getAll().first() } catch (e: Exception) { return false }
+        val autoIds = autoContextIds
+        val replaceable = existing.filter { it.id in autoIds || isDefaultSeedContext(it) }
+        val manual = existing.filter { ctx -> replaceable.none { it.id == ctx.id } }
+
+        fun sharedHours(ctx: MixContext, band: HourBand) = (
+            hoursOf(ctx) intersect
+                hoursOf(MixContext(name = "", startHour = band.start, endHour = band.end))
+            ).size
+
+        val keptIds = mutableSetOf<Long>()
+        val usedNames = mutableSetOf<String>()
+        val leftover = replaceable.toMutableList()
+        for (band in bands) {
+            val bandLength =
+                hoursOf(MixContext(name = "", startHour = band.start, endHour = band.end)).size
+            // The user already covers most of these hours with their own context → skip
+            if (manual.any { sharedHours(it, band) * 2 >= bandLength }) continue
+            val (baseName, icon) = daypartNameAndIcon(band.peak)
+            val name = when {
+                usedNames.add(baseName) -> baseName
+                else -> "$baseName ${band.start}–${band.end}"
+            }
+            // Reuse the overlapping auto context instead of recreating it
+            val match = leftover
+                .maxByOrNull { sharedHours(it, band) }
+                ?.takeIf { sharedHours(it, band) > 0 }
+            if (match != null) {
+                leftover.remove(match)
+                val updated = match.copy(
+                    name = name,
+                    icon = icon,
+                    startHour = band.start,
+                    endHour = band.end,
+                )
+                if (updated != match) {
+                    try {
+                        store.update(updated)
+                    } catch (e: Exception) {
+                        Logger.error("RecommendationEngine", "auto context update failed", e)
+                        continue
+                    }
+                }
+                keptIds.add(match.id)
+            } else {
+                val id = try {
+                    store.insert(
+                        MixContext(
+                            name = name,
+                            icon = icon,
+                            startHour = band.start,
+                            endHour = band.end,
+                        )
+                    )
+                } catch (e: Exception) {
+                    Logger.error("RecommendationEngine", "auto context insert failed", e)
+                    continue
+                }
+                keptIds.add(id)
+            }
+        }
+        // Stale auto contexts (and superseded default seeds) get removed
+        for (stale in leftover) {
+            val removable = stale.id in autoIds ||
+                (isDefaultSeedContext(stale) && keptIds.isNotEmpty())
+            if (removable) {
+                try {
+                    store.delete(stale)
+                } catch (e: Exception) { /* ignore */ }
+            }
+        }
+        saveAutoContextIds(keptIds)
+        return keptIds.isNotEmpty()
     }
 
     // ---------------------------------------------------------------
@@ -486,21 +681,42 @@ class RecommendationEngine(private val symphony: Symphony) {
         seedSongIds: List<String>,
         excludeSongIds: Set<String>,
         limit: Int = 10,
+        anchorSongId: String? = null,
     ): List<String> {
         if (!symphony.semanticSearch.isReady.value) return emptyList()
 
-        // Average embedding of the last three songs in the queue = "the current mood"
-        val vectors = seedSongIds.takeLast(3).mapNotNull { songId ->
-            val song = symphony.groove.song.get(songId) ?: return@mapNotNull null
-            symphony.semanticSearch.getTrackEmbedding(song.title, song.artists.joinToString())
+        fun embeddingOf(songId: String): FloatArray? {
+            val song = symphony.groove.song.get(songId) ?: return null
+            return symphony.semanticSearch.getTrackEmbedding(
+                song.title,
+                song.artists.joinToString(),
+            )
         }
-        if (vectors.isEmpty()) return emptyList()
 
-        val dim = vectors.first().size
-        val centroid = FloatArray(dim)
-        for (v in vectors) {
-            for (i in 0 until dim) centroid[i] += v[i] / vectors.size
+        // Average embedding of the last three songs in the queue = "the current mood"
+        val vectors = seedSongIds.takeLast(3).mapNotNull { embeddingOf(it) }
+        // Song-radio mode: the seed song keeps a fixed weight in the query so the
+        // station holds on to the seed's identity instead of drifting away
+        val anchor = anchorSongId?.let { embeddingOf(it) }
+        if (vectors.isEmpty() && anchor == null) return emptyList()
+
+        val dim = (anchor ?: vectors.first()).size
+        val recent = when {
+            vectors.isEmpty() -> null
+            else -> FloatArray(dim).also { acc ->
+                for (v in vectors) {
+                    for (i in 0 until dim) acc[i] += v[i] / vectors.size
+                }
+            }
         }
+        val centroid = when {
+            anchor != null && recent != null -> FloatArray(dim) { i ->
+                RADIO_ANCHOR_WEIGHT * anchor[i] + (1f - RADIO_ANCHOR_WEIGHT) * recent[i]
+            }
+            anchor != null -> anchor
+            else -> recent!!
+        }
+        val query = normalized(centroid) ?: return emptyList()
 
         // Don't suggest songs that were skipped this week
         val skipped = try {
@@ -510,7 +726,7 @@ class RecommendationEngine(private val symphony: Symphony) {
             emptySet()
         }
 
-        val results = symphony.semanticSearch.searchByVector(centroid, limit * 5)
+        val results = symphony.semanticSearch.searchByVector(query, limit * 5)
         val picked = mutableListOf<String>()
         for (track in results) {
             val path = track.filePath ?: continue

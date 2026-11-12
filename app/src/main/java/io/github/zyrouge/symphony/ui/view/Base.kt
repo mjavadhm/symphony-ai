@@ -61,6 +61,12 @@ fun BaseView(symphony: Symphony, activity: MainActivity) {
                 navController = navController,
                 startDestination = HomeViewRoute,
             ) {
+                baseComposable<io.github.zyrouge.symphony.ui.view.companion.SongCompanionRoute> {
+                    io.github.zyrouge.symphony.ui.view.companion.SongCompanionView(context, it.toRoute())
+                }
+                baseComposable<io.github.zyrouge.symphony.ui.view.companion.CompanionSettingsRoute> {
+                    io.github.zyrouge.symphony.ui.view.companion.CompanionSettingsView(context)
+                }
                 baseComposable<HomeViewRoute> {
                     HomeView(context)
                 }
@@ -91,6 +97,9 @@ fun BaseView(symphony: Symphony, activity: MainActivity) {
                 baseComposable<LyricsViewRoute> {
                     LyricsView(context)
                 }
+                baseComposable<io.github.zyrouge.symphony.ui.view.settings.DiagnosticsSettingsRoute> {
+                    io.github.zyrouge.symphony.ui.view.settings.DiagnosticsSettingsView(context)
+                }
                 baseComposable<SettingsViewRoute> {
                     SettingsView(context, it.toRoute())
                 }
@@ -111,6 +120,9 @@ fun BaseView(symphony: Symphony, activity: MainActivity) {
                 }
                 baseComposable<PlayerSettingsViewRoute> {
                     PlayerSettingsView(context)
+                }
+                baseComposable<io.github.zyrouge.symphony.ui.view.settings.LyricsSettingsViewRoute> {
+                    io.github.zyrouge.symphony.ui.view.settings.LyricsSettingsView(context, it.toRoute())
                 }
                 baseComposable<SemanticSearchSettingsViewRoute> {
                     SemanticSearchSettingsView(context)

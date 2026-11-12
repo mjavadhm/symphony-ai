@@ -320,6 +320,7 @@ class Settings(private val symphony: Symphony) {
                 putStringSet(key, value.map { it.toString() }.toSet())
             }
     }
+    @Deprecated("Legacy migration only; use spotizer.settings.serverBaseUrl")
     val onlineServiceBaseUrl = object : Entry<String>("online_service_base_url") {
         override fun getValueInternal() = getSharedPreferences()
             .getString(key, DEFAULT_ONLINE_SERVICE_BASE_URL)

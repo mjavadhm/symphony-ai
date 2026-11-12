@@ -124,7 +124,7 @@ data class Song(
             val symphony = options.symphony
             val metadata = symphony.applicationContext.contentResolver
                 .openFileDescriptor(file.uri, "r")
-                ?.use { AudioMetadataParser.parse(file.name, it.detachFd()) }
+                ?.use { AudioMetadataParser.parse(file.name, it.fd) }
                 ?: return null
             val id = symphony.groove.song.idGenerator.next()
             val coverFile = metadata.pictures.firstOrNull()?.let {

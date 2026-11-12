@@ -5,62 +5,50 @@ import androidx.test.platform.app.InstrumentationRegistry
 import org.junit.Assert
 import org.junit.Test
 import org.junit.runner.RunWith
+import android.os.ParcelFileDescriptor
+import java.io.File
 
 @RunWith(AndroidJUnit4::class)
 class AudioMetadataParserTest {
     @Test
     fun testFlac() {
-        val context = InstrumentationRegistry.getInstrumentation().context
-        val filename = "audio.flac"
-        val metadata = AudioMetadataParser.parse(
-            filename,
-            context.assets.openFd(filename).parcelFileDescriptor.detachFd(),
-        )
+        val metadata = parseAsset("audio.flac")
         assertMetadata("flac", metadata)
     }
 
     @Test
     fun testOgg() {
-        val context = InstrumentationRegistry.getInstrumentation().context
-        val filename = "audio.ogg"
-        val metadata = AudioMetadataParser.parse(
-            filename,
-            context.assets.openFd(filename).parcelFileDescriptor.detachFd(),
-        )
+        val metadata = parseAsset("audio.ogg")
         assertMetadata("ogg", metadata)
     }
 
     @Test
     fun testMp3() {
-        val context = InstrumentationRegistry.getInstrumentation().context
-        val filename = "audio.mp3"
-        val metadata = AudioMetadataParser.parse(
-            filename,
-            context.assets.openFd(filename).parcelFileDescriptor.detachFd(),
-        )
+        val metadata = parseAsset("audio.mp3")
         assertMetadata("mp3", metadata)
     }
 
     @Test
     fun testMp3Id23() {
-        val context = InstrumentationRegistry.getInstrumentation().context
-        val filename = "audio-id3v2.3.mp3"
-        val metadata = AudioMetadataParser.parse(
-            filename,
-            context.assets.openFd(filename).parcelFileDescriptor.detachFd(),
-        )
+        val metadata = parseAsset("audio-id3v2.3.mp3")
         assertMetadata("mp3id23", metadata)
     }
 
     @Test
     fun testMp3Id24() {
-        val context = InstrumentationRegistry.getInstrumentation().context
-        val filename = "audio-id3v2.4.mp3"
-        val metadata = AudioMetadataParser.parse(
-            filename,
-            context.assets.openFd(filename).parcelFileDescriptor.detachFd(),
-        )
+        val metadata = parseAsset("audio-id3v2.4.mp3")
         assertMetadata("mp3id24", metadata)
+    }
+
+    private fun parseAsset(filename: String): AudioMetadata? {
+        val instrumentation = InstrumentationRegistry.getInstrumentation()
+        val copy = File.createTempFile("parse-test-", ".${filename.substringAfterLast('.')}", instrumentation.targetContext.cacheDir)
+        return try {
+            instrumentation.context.assets.open(filename).use { input -> copy.outputStream().use { input.copyTo(it) } }
+            ParcelFileDescriptor.open(copy, ParcelFileDescriptor.MODE_READ_ONLY).use {
+                AudioMetadataParser.parse(filename, it.fd)
+            }
+        } finally { copy.delete() }
     }
 
     fun assertMetadata(source: String, metadata: AudioMetadata?) {

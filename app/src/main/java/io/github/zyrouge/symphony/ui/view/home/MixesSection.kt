@@ -199,8 +199,7 @@ fun MixesSection(context: ViewContext) {
 }
 
 private fun playMix(context: ViewContext, source: String, songIds: List<String>) {
-    context.symphony.radio.playbackSource = source
-    context.symphony.radio.shorty.playQueue(songIds)
+    context.symphony.radio.shorty.playQueue(songIds, source = source)
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -436,9 +435,9 @@ fun MixSheet(
                     else -> LazyColumn(modifier = Modifier.weight(1f, fill = false)) {
                         items(list) { song ->
                             SongCard(context = context, song = song, onClick = {
-                                context.symphony.radio.playbackSource = source
                                 context.symphony.radio.shorty.playQueue(
                                     list.map { it.id },
+                                    source = source,
                                     options = io.github.zyrouge.symphony.services.radio.Radio.PlayOptions(
                                         index = list.indexOf(song),
                                     ),
