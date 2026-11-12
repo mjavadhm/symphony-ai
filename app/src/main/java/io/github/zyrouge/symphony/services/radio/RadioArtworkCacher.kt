@@ -10,11 +10,14 @@ import io.github.zyrouge.symphony.ui.helpers.Assets
 
 class RadioArtworkCacher(val symphony: Symphony) {
     private var default: Bitmap? = null
-    private var cached = mutableMapOf<String, Bitmap>()
+    // Read and written from several coroutines at once (notification and media session updates), so every
+    // access holds its lock. Unguarded, evicting the oldest entry crashed with ConcurrentModificationException.
+    private val cached = mutableMapOf<String, Bitmap>()
     private val cacheLimit = 3
 
     suspend fun getArtwork(song: Song): Bitmap {
-        return cached[song.id] ?: kotlin.run {
+        return synchronized(cached) { cached[song.id] } ?: kotlin.run {
+            // Loaded outside the lock: this suspends, and two requests for the same song only cost a duplicate load.
             val result = symphony.applicationContext.imageLoader
                 .execute(song.createArtworkImageRequest(symphony).build())
             val bitmap = result.drawable?.toBitmap() ?: getDefaultArtwork()
@@ -35,9 +38,11 @@ class RadioArtworkCacher(val symphony: Symphony) {
     }
 
     private fun updateCache(key: String, value: Bitmap) {
-        if (!cached.containsKey(key) && cached.size >= cacheLimit) {
-            cached.remove(cached.keys.first())
+        synchronized(cached) {
+            if (!cached.containsKey(key) && cached.size >= cacheLimit) {
+                cached.remove(cached.keys.first())
+            }
+            cached[key] = value
         }
-        cached[key] = value
     }
 }

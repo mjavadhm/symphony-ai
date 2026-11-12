@@ -148,7 +148,11 @@ class MediaExposer(private val symphony: Symphony) {
             cycle.artworkCacheUnused.remove(it)
         }
         cycle.lyricsCacheUnused.remove(song.id)
-        explorer.addChildFile(path)
+        // A rescan without a reset keeps the tree. A file already in it is already in the library, so skip it:
+        // emitting it again would count it twice in its album and artist. (This used to throw and log an error
+        // for every known file on every rescan.) The cache bookkeeping above must still run, or trimCache
+        // would delete the cache entries of known songs.
+        explorer.addChildFileIfAbsent(path) ?: return
         withContext(Dispatchers.Main) {
             emitSong(song)
         }
@@ -160,7 +164,7 @@ class MediaExposer(private val symphony: Symphony) {
         file: DocumentFileX,
     ) {
         uris[path.pathString] = file.uri
-        explorer.addChildFile(path)
+        explorer.addChildFileIfAbsent(path)
     }
 
     private fun scanM3UFile(
@@ -169,7 +173,7 @@ class MediaExposer(private val symphony: Symphony) {
         file: DocumentFileX,
     ) {
         uris[path.pathString] = file.uri
-        explorer.addChildFile(path)
+        explorer.addChildFileIfAbsent(path)
     }
 
     private suspend fun trimCache(cycle: ScanCycle) {
