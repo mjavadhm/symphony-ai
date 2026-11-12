@@ -60,5 +60,22 @@ sealed class SimpleFileSystem(val parent: Folder?, val name: String) {
             }
             return parent.addChildFile(parts[0])
         }
+
+        /**
+         * Adds the file at [path], creating folders on the way, or returns null if it is already there.
+         * Unlike [addChildFile] it never throws for an existing file or folder, and it is safe when parallel
+         * scans add files to the same new folder at the same time.
+         */
+        fun addChildFileIfAbsent(path: SimplePath): File? {
+            var parent = this
+            for (name in path.parts.dropLast(1)) {
+                val node = parent.children[name]
+                    ?: Folder(parent, name).let { created -> parent.children.putIfAbsent(name, created) ?: created }
+                parent = node as? Folder ?: throw Exception("Child '$name' is not a folder")
+            }
+            val name = path.parts.last()
+            val created = File(parent, name)
+            return if (parent.children.putIfAbsent(name, created) == null) created else null
+        }
     }
 }

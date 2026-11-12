@@ -12,7 +12,12 @@ import io.github.zyrouge.symphony.Symphony
 
 class RadioNotificationManager(val symphony: Symphony) {
     private var manager = NotificationManagerCompat.from(symphony.applicationContext)
+    // notify() runs on background coroutines while service events arrive on the main thread.
+    @Volatile
     private var lastNotification: Notification? = null
+    /** The notification the service was last requested with; never cleared, so the service can always enter the foreground. */
+    @Volatile
+    private var startNotification: Notification? = null
 
     enum class State {
         PREPARING,
@@ -54,8 +59,11 @@ class RadioNotificationManager(val symphony: Symphony) {
 
     fun notify(notification: Notification) {
         if (!hasService) {
-            createService()
+            // Set before starting the service: it can start on the main thread before a later assignment
+            // here would run, and would then find no notification to show.
             lastNotification = notification
+            startNotification = notification
+            createService()
             return
         }
         try {
@@ -84,19 +92,31 @@ class RadioNotificationManager(val symphony: Symphony) {
     }
 
     private fun onServiceStart() {
+        // A second start (stop, then play again before the first start arrived) finds the service already
+        // in the foreground; it must not be stopped then.
+        val alreadyForeground = state == State.READY
         state = State.READY
-        lastNotification?.let { notification ->
-            lastNotification = null
-            ServiceCompat.startForeground(
-                service!!,
-                RadioNotification.NOTIFICATION_ID,
-                notification,
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-                    ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PLAYBACK
-                } else {
-                    0
-                }
-            )
+        val running = service ?: return
+        val pending = lastNotification
+        lastNotification = null
+        if (pending == null && alreadyForeground) return
+        // After startForegroundService() Android requires startForeground() within a few seconds, or it kills
+        // the app (ForegroundServiceDidNotStartInTimeException). If playback stopped before the service started,
+        // nothing is pending: enter the foreground with the notification the service was requested with,
+        // then stop straight away.
+        val notification = pending ?: startNotification ?: return
+        ServiceCompat.startForeground(
+            running,
+            RadioNotification.NOTIFICATION_ID,
+            notification,
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PLAYBACK
+            } else {
+                0
+            }
+        )
+        if (pending == null) {
+            RadioNotificationService.destroy()
         }
     }
 
