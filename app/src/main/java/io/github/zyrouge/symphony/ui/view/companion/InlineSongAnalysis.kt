@@ -1,110 +1,149 @@
 package io.github.zyrouge.symphony.ui.view.companion
 
 import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import io.github.zyrouge.symphony.services.companion.*
 import io.github.zyrouge.symphony.ui.components.ReadableText
+import io.github.zyrouge.symphony.ui.components.readingStyle
 import io.github.zyrouge.symphony.ui.helpers.ViewContext
+import io.github.zyrouge.symphony.ui.view.settings.LlmSettingsRoute
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.flowOf
+import kotlinx.coroutines.flow.map
 
-/** Player reading surface: the prose is the content, not a technical revision card. */
-@OptIn(ExperimentalMaterial3Api::class)
+/** What a Story/Meaning tab needs to know about one section of the current song. */
+internal data class SectionState(
+    val loaded: Boolean,
+    val saved: CompanionRevision?,
+    val pending: Boolean,
+    val failure: String?,
+)
+
 @Composable
-fun InlineSongAnalysis(context: ViewContext, songId: String, trackId: String, error: String, padding: PaddingValues, request: String? = null, onRequestHandled: () -> Unit = {}) {
+internal fun rememberSectionState(context: ViewContext, trackId: String, section: CompanionSection): SectionState {
     val service = context.symphony.songCompanion
-    val profile by remember(trackId) { if (trackId.isEmpty()) flowOf<CompanionTrack?>(null) else service.dao.observeTrack(trackId) }.collectAsState(initial = null)
-    val revisions by remember(trackId) { if (trackId.isEmpty()) flowOf(emptyList<CompanionRevision>()) else service.dao.revisions(trackId) }.collectAsState(initial = emptyList())
-    val messages by remember(trackId) { if (trackId.isEmpty()) flowOf(emptyList<CompanionMessage>()) else service.dao.messages(trackId) }.collectAsState(initial = emptyList())
     val prefs by service.preferences.collectAsState()
+    val pending by service.pending.collectAsState()
+    val failures by service.failures.collectAsState()
+    // Emits (request, saved revision). collectAsState keeps the previous song's value until the new
+    // query emits, so a result only counts once it answers this exact song, section and language.
+    val request = Triple(trackId, section, prefs.language)
+    val result by remember(request) {
+        if (trackId.isEmpty()) flowOf(null) else service.dao.revisions(trackId).map { revisions ->
+            request to revisions.firstOrNull {
+                it.section == section.name && it.target.isEmpty() && it.language == prefs.language && it.state == "saved"
+            }
+        }
+    }.collectAsState(initial = null)
+    val current = result?.takeIf { it.first == request }
+    val key = service.key(trackId, section, language = prefs.language)
+    return SectionState(current != null, current?.second, key in pending, failures[key])
+}
+
+/**
+ * Writes the section the first time it is shown for a song. Waits a moment first, so skipping through
+ * songs with the tab open does not start (and pay for) a request for every song passed.
+ */
+@Composable
+internal fun AutoGenerate(context: ViewContext, trackId: String, section: CompanionSection, state: SectionState, enabled: Boolean = true) {
+    val service = context.symphony.songCompanion
+    val prefs by service.preferences.collectAsState()
+    LaunchedEffect(trackId, section, prefs.language, prefs.consent, state.loaded, state.saved == null, enabled) {
+        if (!enabled || trackId.isEmpty() || !state.loaded || state.saved != null || state.pending || state.failure != null) return@LaunchedEffect
+        delay(1200)
+        service.autoGenerate(trackId, section)
+    }
+}
+
+/** Shown instead of content until AI is turned on and a provider is configured. */
+@Composable
+internal fun CompanionSetup(context: ViewContext, modifier: Modifier = Modifier) {
+    val service = context.symphony.songCompanion
+    val prefs by service.preferences.collectAsState()
+    Column(modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        Text("Stories, meanings & translations", style = MaterialTheme.typography.titleMedium)
+        if (!prefs.consent) {
+            Text("Written by your AI provider. The song's title, artist and lyrics are sent to it; your audio stays on this device. " +
+                "Nothing is sent until you open a tab or tap Translate, and results are saved so each song is written once.",
+                style = MaterialTheme.typography.bodyMedium)
+            Button(onClick = { service.configure(consent = true) }) { Text("Turn on") }
+        } else {
+            Text("Choose an AI provider, model and API key first.", style = MaterialTheme.typography.bodyMedium)
+            Button(onClick = { context.navController.navigate(LlmSettingsRoute) }) { Text("Set up AI provider") }
+        }
+    }
+}
+
+/** "Writing…", or the error with a retry button. */
+@Composable
+internal fun SectionStatus(context: ViewContext, trackId: String, state: SectionState, busyLabel: String, onRetry: () -> Unit) {
+    val service = context.symphony.songCompanion
     val task by service.task.collectAsState()
-    var chat by rememberSaveable(songId) { mutableStateOf(false) }
-    var rewrite by rememberSaveable(songId) { mutableStateOf(false) }
-    var instruction by rememberSaveable(songId) { mutableStateOf("") }
-    var question by rememberSaveable(songId) { mutableStateOf("") }
-    LaunchedEffect(request) {
-        when (request) { "chat" -> chat = true; "rewrite" -> rewrite = true }
-        if (request != null) onRequestHandled()
-    }
-    val track = profile?.takeIf { it.id == trackId }
-    val currentHash = track?.let { CompanionCore.decodeSnapshot(it.snapshot).hash }
-    val scoped = revisions.filter { it.trackId == trackId && it.section == "MEANING" && it.target.isEmpty() && it.language == prefs.language }
-    val saved = scoped.firstOrNull { it.state == "saved" }
-    // Only the newest applicable proposal is a player preview. Keeping/discarding it must
-    // not unexpectedly reveal an older, superseded draft over the saved article.
-    val draft = CompanionRevisionPolicy.playerDraft(scoped)
-    val shown = draft ?: saved
-    val stale = shown != null && CompanionCore.decodeSnapshot(shown.snapshot).hash != currentHash
-    val canAct = track != null && !task.busy && prefs.consent
-    LazyColumn(Modifier.fillMaxSize(), contentPadding = padding, verticalArrangement = Arrangement.spacedBy(16.dp)) {
-        item {
-            if (error.isNotBlank()) ReadableText(error, style = MaterialTheme.typography.bodyMedium.copy(color = MaterialTheme.colorScheme.error))
-            if (track == null && error.isBlank()) Text("Preparing…", style = MaterialTheme.typography.bodySmall)
-            if (!prefs.consent) TextButton(onClick = { context.navController.navigate(CompanionSettingsRoute) }) { Text("Set up song stories") }
-            if (task.trackId == trackId && (task.busy || task.error)) {
-                ReadableText(task.message, style = MaterialTheme.typography.bodySmall.copy(color = if (task.error) MaterialTheme.colorScheme.error else LocalContentColor.current))
-                if (task.busy) {
-                    LinearProgressIndicator(Modifier.fillMaxWidth())
-                    TextButton(onClick = service::stop) { Text("Cancel") }
-                }
-            } else if (task.busy) Text("Another song is being processed", style = MaterialTheme.typography.bodySmall)
+    when {
+        state.pending -> Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Text(busyLabel, style = MaterialTheme.typography.bodyMedium)
+            LinearProgressIndicator(Modifier.fillMaxWidth())
+            // Requests run one at a time; say so instead of looking stuck behind another song.
+            if (task.busy && task.trackId != trackId) Muted("Waiting for another song to finish…")
+            TextButton(onClick = service::stop) { Text("Cancel") }
         }
-        if (shown != null) {
-            if (draft != null) item { Text("Preview · your saved text is unchanged", style = MaterialTheme.typography.labelMedium) }
-            if (stale) item { Text("Lyrics changed since this version. Generate a fresh draft before saving.", color = MaterialTheme.colorScheme.error) }
-            val text = SongStoryPrompt.readable(CompanionCore.display(CompanionSection.MEANING, shown.payload))
-            val paragraphs = text.split(Regex("\\n\\s*\\n"))
-            items(paragraphs.size) { index -> ReadableText(paragraphs[index], style = MaterialTheme.typography.bodyLarge) }
-            if (draft != null) item {
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Button(enabled = !task.busy && !stale, onClick = { service.apply(draft.id, trackId) }) { Text("Keep this version") }
-                    TextButton(enabled = !task.busy, onClick = { service.discard(draft.id, trackId) }) { Text("Discard") }
-                }
-            }
-        } else if (track != null) item {
-            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                Text("The story behind the song", style = MaterialTheme.typography.titleMedium)
-                Text("Create once, read anytime. AI can be wrong about an artist’s history.", style = MaterialTheme.typography.bodyMedium)
-                Button(enabled = canAct, onClick = { service.generate(trackId, CompanionSection.MEANING) }) { Text("Write the story") }
-            }
-        }
-        if (track != null) item {
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                TextButton(onClick = { chat = true }) { Text("Ask / correct") }
-                TextButton(enabled = canAct, onClick = { rewrite = true }) { Text("Rewrite") }
-            }
+        state.failure != null -> Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            ReadableText(state.failure, style = MaterialTheme.typography.bodyMedium.copy(color = MaterialTheme.colorScheme.error))
+            TextButton(onClick = onRetry) { Text("Try again") }
         }
     }
-    if (rewrite) AlertDialog(onDismissRequest = { rewrite = false }, title = { Text("Rewrite the story") }, text = {
-        OutlinedTextField(instruction, { instruction = it }, Modifier.fillMaxWidth(), textStyle = io.github.zyrouge.symphony.ui.components.readingStyle(instruction, LocalTextStyle.current),
-            label = { Text("What should change? (optional)") }, minLines = 3)
-    }, confirmButton = { TextButton(enabled = canAct, onClick = { service.generate(trackId, CompanionSection.MEANING, instruction = instruction); rewrite = false }) { Text("Create draft") } },
-        dismissButton = { TextButton(onClick = { rewrite = false }) { Text("Cancel") } })
-    if (chat && track != null) ModalBottomSheet(onDismissRequest = { chat = false }) {
-        Column(Modifier.fillMaxWidth().heightIn(max = 560.dp).imePadding().verticalScroll(rememberScrollState()).padding(horizontal = 20.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-            Text("Ask / correct", style = MaterialTheme.typography.titleLarge)
-            Text("Suggestions become saved text only after you keep the new version.", style = MaterialTheme.typography.bodySmall)
-            messages.filter { it.trackId == trackId && it.section == "MEANING" && it.target.isEmpty() && it.language == prefs.language }.takeLast(30).forEach { message ->
-                Text(if (message.role == "user") "You" else "Assistant", style = MaterialTheme.typography.labelSmall)
-                ReadableText(SongStoryPrompt.readable(message.text))
+}
+
+/** Regenerate, with an optional note on what to change. */
+@Composable
+internal fun RegenerateButton(context: ViewContext, trackId: String, section: CompanionSection, enabled: Boolean, title: String) {
+    val service = context.symphony.songCompanion
+    var open by rememberSaveable(trackId, section) { mutableStateOf(false) }
+    var instruction by rememberSaveable(trackId, section) { mutableStateOf("") }
+    TextButton(enabled = enabled, onClick = { open = true }) { Text("Regenerate") }
+    if (open) AlertDialog(
+        onDismissRequest = { open = false },
+        title = { Text(title) },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text("The current version stays in version history.", style = MaterialTheme.typography.bodySmall)
+                OutlinedTextField(instruction, { instruction = it }, Modifier.fillMaxWidth(),
+                    textStyle = readingStyle(instruction, LocalTextStyle.current),
+                    label = { Text("What should change? (optional)") }, minLines = 3)
             }
-            if (draft != null) {
-                Text("A new draft is ready in the player", style = MaterialTheme.typography.labelMedium)
-                TextButton(onClick = { chat = false }) { Text("Review draft") }
-            }
-            if (task.trackId == trackId && (task.busy || task.error)) {
-                ReadableText(task.message)
-                if (task.busy) TextButton(onClick = service::stop) { Text("Cancel request") }
-            }
-            OutlinedTextField(question, { question = it }, Modifier.fillMaxWidth(), textStyle = io.github.zyrouge.symphony.ui.components.readingStyle(question, LocalTextStyle.current), label = { Text("Ask or explain what is wrong") })
-            Button(enabled = canAct && question.isNotBlank(), onClick = { service.chat(trackId, CompanionSection.MEANING, "", question); question = "" }) { Text("Send") }
-            Spacer(Modifier.height(24.dp))
-        }
+        },
+        confirmButton = { TextButton(onClick = {
+            service.generate(trackId, section, instruction = instruction.trim()); instruction = ""; open = false
+        }) { Text("Regenerate") } },
+        dismissButton = { TextButton(onClick = { open = false }) { Text("Cancel") } },
+    )
+}
+
+@Composable
+internal fun Muted(text: String, modifier: Modifier = Modifier) {
+    Text(text, modifier, style = MaterialTheme.typography.labelMedium, color = LocalContentColor.current.copy(alpha = 0.6f))
+}
+
+/** True when AI can run. Reads preferences so it updates as soon as AI is turned on. */
+@Composable
+internal fun rememberReady(context: ViewContext): Boolean {
+    val service = context.symphony.songCompanion
+    val prefs by service.preferences.collectAsState()
+    // The provider settings are not observable; they are re-read whenever this recomposes (e.g. returning from settings).
+    return prefs.consent && service.readiness() == null
+}
+
+/** Common frame for the Story and Meaning tabs: song-matching errors and the loading state. */
+@Composable
+internal fun CompanionTabFrame(trackId: String, error: String, content: @Composable () -> Unit) {
+    when {
+        error.isNotBlank() -> ReadableText(error, style = MaterialTheme.typography.bodyMedium.copy(color = MaterialTheme.colorScheme.error))
+        trackId.isEmpty() -> Box(Modifier.fillMaxWidth().padding(vertical = 32.dp), contentAlignment = Alignment.Center) { Muted("Loading…") }
+        else -> content()
     }
 }

@@ -46,7 +46,7 @@ fun SongCompanionView(context: ViewContext, route: SongCompanionRoute) {
         catch (e: Exception) { error = e.message.orEmpty() }
     }
     LaunchedEffect(route) { if (id.isEmpty()) resolve() }
-    GlassSettingsScaffold(context, "Song Companion", topBarActions = {
+    GlassSettingsScaffold(context, "Versions, editing & chat", topBarActions = {
         TextButton(onClick = { context.navController.navigate(CompanionSettingsRoute) }) { Text("Settings") }
     }) { padding ->
         if (id.isNotEmpty()) {
@@ -71,8 +71,8 @@ private fun CompanionDossier(context: ViewContext, id: String, initialLine: Stri
     val sources by remember(id) { service.dao.sources(id) }.collectAsState(initial = emptyList())
     val prefs by service.preferences.collectAsState()
     val task by service.task.collectAsState()
-    var tab by rememberSaveable(id) { mutableIntStateOf(if (initialLine.isEmpty()) 0 else 2) }
-    var sectionName by rememberSaveable(id) { mutableStateOf(if (initialLine.isEmpty()) "MEANING" else "NOTE") }
+    var tab by rememberSaveable(id) { mutableIntStateOf(if (initialLine.isEmpty()) 0 else 3) }
+    var sectionName by rememberSaveable(id) { mutableStateOf(if (initialLine.isEmpty()) "STORY" else "NOTE") }
     var lineId by rememberSaveable(id) { mutableStateOf(initialLine) }
     var instruction by rememberSaveable(id) { mutableStateOf("") }
     var question by rememberSaveable(id) { mutableStateOf("") }
@@ -95,10 +95,10 @@ private fun CompanionDossier(context: ViewContext, id: String, initialLine: Stri
             Text("Saved on this device. Opening this page never calls AI.", style = MaterialTheme.typography.bodySmall)
         }
         ScrollableTabRow(selectedTabIndex = tab, edgePadding = 8.dp) {
-            listOf("Behind the song", "Translation", "Line notes", "Chat").forEachIndexed { i, title ->
+            listOf("Story", "Meaning", "Translation", "Line notes", "Chat").forEachIndexed { i, title ->
                 Tab(selected = tab == i, onClick = {
                     tab = i
-                    if (i < 3) sectionName = listOf("MEANING", "TRANSLATION", "NOTE")[i]
+                    if (i < 4) sectionName = listOf("STORY", "MEANING", "TRANSLATION", "NOTE")[i]
                 }, text = { Text(title) })
             }
         }
@@ -108,7 +108,7 @@ private fun CompanionDossier(context: ViewContext, id: String, initialLine: Stri
                 if (task.busy) { LinearProgressIndicator(Modifier.fillMaxWidth()); TextButton(onClick = service::stop) { Text("Stop") } }
             }
             if (task.busy && task.trackId != id) Text("Another dossier is being processed. Wait for it to finish before starting another request.")
-            if (!prefs.consent) Text("Enable AI consent in Companion settings before generating. Reading and manual editing work offline.")
+            if (!prefs.consent) Text("Turn on stories & translation in settings to generate. Reading and manual editing work offline.")
             if (section == CompanionSection.NOTE) {
                 Text("Select a lyric line (or long-press a line in the player).")
                 snapshot.lines.forEach { line ->
@@ -122,7 +122,7 @@ private fun CompanionDossier(context: ViewContext, id: String, initialLine: Stri
                 }
                 if (snapshot.lines.isEmpty()) Text("Add lyrics first to create line notes or translations.")
             }
-            if (tab == 3) {
+            if (tab == 4) {
                 Text("Chat scope: ${section.name.lowercase()} · ${prefs.language}", style = MaterialTheme.typography.titleMedium)
                 Text("Select another section tab before opening Chat to change its scope. Changes are proposals until you tap Apply.")
                 val conversation = messages.filter { it.section == section.name && it.target == target && it.language == prefs.language }
@@ -141,29 +141,24 @@ private fun CompanionDossier(context: ViewContext, id: String, initialLine: Stri
                     service.chat(id, section, target, question); question = ""
                 }) { Text("Send") }
             } else {
-                if (section == CompanionSection.MEANING) Text("AI-written background; not independently verified.", style = MaterialTheme.typography.bodySmall)
+                if (section == CompanionSection.STORY) Text("Written by AI from what it knows; not independently verified.", style = MaterialTheme.typography.bodySmall)
                 if (saved == null) Text("Nothing saved in this section/language yet.")
                 else {
                     Text("Saved version", style = MaterialTheme.typography.titleMedium)
                     RevisionCard(service, saved, snapshot, sources, task.busy)
                 }
-                OutlinedTextField(instruction, { instruction = it }, Modifier.fillMaxWidth(), textStyle = readingStyle(instruction, LocalTextStyle.current), label = { Text("Optional direction for a new draft") })
+                OutlinedTextField(instruction, { instruction = it }, Modifier.fillMaxWidth(), textStyle = readingStyle(instruction, LocalTextStyle.current), label = { Text("Optional: what should change") })
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Button(enabled = canAct, onClick = { service.generate(id, section, target, instruction) }) { Text(if (saved == null) "Generate draft" else "New draft") }
+                    Button(enabled = canAct, onClick = { service.generate(id, section, target, instruction); instruction = "" }) { Text(if (saved == null) "Generate" else "Regenerate") }
                     TextButton(enabled = canAct, onClick = { editor = saved; manualNew = saved == null }) { Text("Edit manually") }
                 }
                 (if (history) drafts else drafts.take(3)).forEach { revision ->
-                    Text("Draft to review", style = MaterialTheme.typography.titleSmall)
+                    Text("Suggested in chat · review", style = MaterialTheme.typography.titleSmall)
                     RevisionCard(service, revision, snapshot, sources, task.busy)
                 }
                 TextButton(onClick = { history = !history }) { Text(if (history) "Hide versions" else "Version history") }
                 if (history) {
                     scoped.filter { it.state in setOf("archived", "discarded") }.forEach { RevisionCard(service, it, snapshot, sources, task.busy) }
-                    if (section == CompanionSection.MEANING) {
-                        val legacy = revisions.filter { it.section == "STORY" && it.language == prefs.language }
-                        if (legacy.isNotEmpty()) Text("Earlier source-based stories · kept for reference")
-                        legacy.forEach { RevisionCard(service, it, snapshot, sources, task.busy) }
-                    }
                 }
             }
             Spacer(Modifier.height(32.dp))
@@ -186,11 +181,27 @@ internal fun RevisionCard(service: SongCompanion, revision: CompanionRevision, c
                 val translations = CompanionCore.translations(revision.payload)
                 snapshot.lines.forEach { ReadableText(it.text); ReadableText(translations[it.id].orEmpty(), style = MaterialTheme.typography.bodyMedium.copy(color = MaterialTheme.colorScheme.primary)) }
             }
-            CompanionSection.STORY -> CompanionCore.parseObject(revision.payload).getValue("paragraphs").jsonArray.forEach { item ->
-                val p = item.jsonObject
-                ReadableText(SongStoryPrompt.readable(p.getValue("text").jsonPrimitive.content))
-                p.getValue("sourceIds").jsonArray.forEach { ref -> sources.firstOrNull { it.id == ref.jsonPrimitive.content }?.let { source ->
-                    TextButton(onClick = { uriHandler.openUri(source.url) }) { Text("Source: ${source.title}") }
+            CompanionSection.STORY -> {
+                val payload = CompanionCore.parseObject(revision.payload)
+                when (payload["basis"]?.jsonPrimitive?.contentOrNull) {
+                    "known" -> Text("Known background", style = MaterialTheme.typography.labelMedium)
+                    "lyrics" -> Text("Interpretation from the lyrics", style = MaterialTheme.typography.labelMedium)
+                }
+                payload.getValue("paragraphs").jsonArray.forEach { item ->
+                    val p = item.jsonObject
+                    ReadableText(SongStoryPrompt.readable(p.getValue("text").jsonPrimitive.content))
+                    // Stories from earlier versions cited saved reference excerpts.
+                    p["sourceIds"]?.jsonArray?.forEach { ref -> sources.firstOrNull { it.id == ref.jsonPrimitive.content }?.let { source ->
+                        TextButton(onClick = { uriHandler.openUri(source.url) }) { Text("Source: ${source.title}") }
+                    } }
+                }
+            }
+            CompanionSection.MEANING -> {
+                val meaning = CompanionCore.meaning(revision.payload)
+                ReadableText(SongStoryPrompt.readable(meaning.summary))
+                snapshot.lines.forEach { line -> meaning.lines[line.id]?.let { explanation ->
+                    ReadableText(line.text, style = MaterialTheme.typography.titleSmall)
+                    ReadableText(explanation, style = MaterialTheme.typography.bodyMedium)
                 } }
             }
             else -> ReadableText(SongStoryPrompt.readable(CompanionCore.display(section, revision.payload)))
@@ -205,6 +216,7 @@ internal fun RevisionCard(service: SongCompanion, revision: CompanionRevision, c
 private fun PayloadEditor(service: SongCompanion, id: String, section: CompanionSection, target: String,
                           snapshot: CompanionSnapshot, sources: List<CompanionSource>, revision: CompanionRevision?, dismiss: () -> Unit) {
     var text by remember { mutableStateOf(revision?.let { CompanionCore.display(section, it.payload) }.orEmpty()) }
+    val previous = remember { revision?.let { CompanionCore.parseObject(it.payload) } }
     val translations = remember { mutableStateMapOf<String, String>().apply { putAll(CompanionCore.translations(revision?.payload)) } }
     AlertDialog(onDismissRequest = dismiss, title = { Text("Manual edit · ${section.name.lowercase()}") }, text = {
         Column(Modifier.heightIn(max = 420.dp).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -212,18 +224,27 @@ private fun PayloadEditor(service: SongCompanion, id: String, section: Companion
                 ReadableText(line.text)
                 OutlinedTextField(translations[line.id].orEmpty(), { translations[line.id] = it }, textStyle = readingStyle(translations[line.id].orEmpty(), LocalTextStyle.current), label = { Text("Translation") })
             } else {
-                if (section == CompanionSection.STORY) Text("Manual story uses all selected references below; make sure they actually support your text.")
+                if (section == CompanionSection.MEANING) Text("Edits the summary. Line explanations are kept.", style = MaterialTheme.typography.bodySmall)
                 OutlinedTextField(text, { text = it }, Modifier.fillMaxWidth(), textStyle = readingStyle(text, LocalTextStyle.current), label = { Text("Text") }, minLines = 4)
             }
         }
     }, confirmButton = { TextButton(enabled = if (section == CompanionSection.TRANSLATION) snapshot.lines.isNotEmpty() && snapshot.lines.all { !translations[it.id].isNullOrBlank() }
-        else text.isNotBlank() && (section != CompanionSection.STORY || sources.isNotEmpty()), onClick = {
+        else text.isNotBlank(), onClick = {
         val payload = buildJsonObject {
             when (section) {
                 CompanionSection.TRANSLATION -> put("lines", buildJsonArray { snapshot.lines.forEach { line -> add(buildJsonObject {
                     put("id", line.id); put("translation", translations[line.id].orEmpty())
                 }) } })
-                CompanionSection.STORY -> put("paragraphs", buildJsonArray { add(buildJsonObject { put("text", text); put("sourceIds", JsonArray(sources.map { JsonPrimitive(it.id) })) }) })
+                CompanionSection.STORY -> {
+                    previous?.get("basis")?.let { put("basis", it) }
+                    put("paragraphs", buildJsonArray {
+                        text.split(Regex("\\n\\s*\\n")).map { it.trim() }.filter { it.isNotEmpty() }.forEach { add(buildJsonObject { put("text", it) }) }
+                    })
+                }
+                CompanionSection.MEANING -> {
+                    put("summary", text)
+                    put("lines", previous?.get("lines") ?: JsonArray(emptyList()))
+                }
                 else -> put("text", text)
             }
         }.toString()

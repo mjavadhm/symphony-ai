@@ -75,7 +75,7 @@ fun CompanionSettingsView(context: ViewContext) {
             GlassSurface(Modifier.fillMaxWidth(), shape = RoundedCornerShape(28.dp)) {
             Column(Modifier.padding(horizontal = 20.dp, vertical = 16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
             Text("AI & language", style = MaterialTheme.typography.titleMedium)
-            Text("AI runs only when you ask. Song details, lyrics and relevant chat go to your chosen provider; audio stays on this device. No Wikipedia or live web lookup.")
+            Text("AI runs only when you open Story or Meaning, or tap Translate. Song details and lyrics go to your chosen provider; audio stays on this device. Results are saved, so each song is written once.")
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 Switch(checked = prefs.consent, onCheckedChange = { service.configure(consent = it) })
                 Text("Enable AI stories & translation", Modifier.weight(1f))
@@ -109,7 +109,7 @@ fun CompanionSettingsView(context: ViewContext) {
             }
             }
             Text("Saved songs (${tracks.size})", style = MaterialTheme.typography.titleLarge)
-            if (tracks.isEmpty()) Text("Open Song Companion from the lyrics screen to start a dossier.")
+            if (tracks.isEmpty()) Text("Open Story or Meaning on the lyrics screen to start.")
             TextButton(onClick = { showLibrary = !showLibrary }) { Text(if (showLibrary) "Hide saved songs" else "Browse saved songs") }
             if (showLibrary) tracks.forEach { track ->
                 TextButton(onClick = { context.navController.navigate(SongCompanionRoute(trackId = track.id)) }) {

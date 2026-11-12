@@ -17,9 +17,15 @@ import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.foundation.layout.IntrinsicSize
+import androidx.compose.foundation.layout.width
+import androidx.compose.material.icons.filled.Translate
 import io.github.zyrouge.symphony.ui.view.companion.CompanionSettingsRoute
 import androidx.compose.runtime.saveable.rememberSaveable
-import io.github.zyrouge.symphony.ui.view.companion.InlineSongAnalysis
+import io.github.zyrouge.symphony.ui.view.companion.CompanionSetup
+import io.github.zyrouge.symphony.ui.view.companion.SongMeaningTab
+import io.github.zyrouge.symphony.ui.view.companion.SongStoryTab
+import io.github.zyrouge.symphony.ui.view.companion.rememberReady
 import io.github.zyrouge.symphony.ui.view.settings.LyricsSettingsViewRoute
 import io.github.zyrouge.symphony.services.companion.*
 import io.github.zyrouge.symphony.ui.view.companion.SongCompanionRoute
@@ -94,9 +100,13 @@ fun LyricsText(
     val preferences by companion.preferences.collectAsState()
     var profileId by remember { mutableStateOf("") }
     var profileError by remember { mutableStateOf("") }
-    var showAnalysis by rememberSaveable { mutableStateOf(false) }
+    // 0 = Lyrics, 1 = Story, 2 = Meaning
+    var tab by rememberSaveable { mutableIntStateOf(0) }
     var menu by remember { mutableStateOf(false) }
-    var storyRequest by remember(song?.id) { mutableStateOf<String?>(null) }
+    var setup by remember { mutableStateOf(false) }
+    val ready = rememberReady(context)
+    val pending by companion.pending.collectAsState()
+    val failures by companion.failures.collectAsState()
     var lineSnapshot by remember { mutableStateOf<CompanionSnapshot?>(null) }
     val revisions by remember(profileId) {
         if (profileId.isEmpty()) flowOf(emptyList<CompanionRevision>()) else companion.dao.revisions(profileId)
@@ -115,6 +125,20 @@ fun LyricsText(
                 CompanionCore.decodeSnapshot(it.snapshot).hash == lineSnapshot?.hash
         }.map { it.target }.toSet()
         lineSnapshot?.lines?.filter { it.id in noteIds }?.map { it.index }?.toSet().orEmpty()
+    }
+    val translationKey = companion.key(profileId, CompanionSection.TRANSLATION, language = preferences.language)
+    val translating = profileId.isNotEmpty() && translationKey in pending
+    val translationError = if (profileId.isEmpty()) null else failures[translationKey]
+    val canTranslate = profileId.isNotEmpty() && lyricsSongId == song?.id && lineSnapshot?.lines?.isNotEmpty() == true
+    fun translate() {
+        if (!ready) { setup = true; return }
+        // Asking for a translation means wanting to see it, even if translations were hidden before.
+        if (preferences.mode == "ORIGINAL") companion.configure(mode = "BILINGUAL")
+        companion.generate(profileId, CompanionSection.TRANSLATION)
+    }
+    // After turning AI on from the Translate prompt, carry on with the translation that was asked for.
+    LaunchedEffect(setup, ready) {
+        if (setup && ready) { setup = false; if (canTranslate && acceptedTranslation == null) translate() }
     }
 
     LaunchedEffect(LocalContext.current) {
@@ -157,36 +181,67 @@ fun LyricsText(
 
     Column(Modifier.fillMaxSize()) {
         Row(Modifier.fillMaxWidth().padding(horizontal = 12.dp), verticalAlignment = Alignment.CenterVertically) {
-            // Text tabs instead of chunky filter chips; both retain accessible touch targets.
-            listOf(false to "Lyrics", true to "Behind the song").forEach { (analysis, label) ->
-                Column {
-                    TextButton(onClick = { showAnalysis = analysis }, modifier = Modifier.heightIn(min = 48.dp),
-                        colors = ButtonDefaults.textButtonColors(contentColor = LocalContentColor.current.copy(alpha = if (showAnalysis == analysis) 1f else 0.55f))) {
-                        Text(label, style = MaterialTheme.typography.labelLarge, fontWeight = if (showAnalysis == analysis) FontWeight.Bold else FontWeight.Normal)
+            // Text tabs instead of chunky filter chips; each keeps an accessible touch target.
+            listOf("Lyrics", "Story", "Meaning").forEachIndexed { index, label ->
+                Column(Modifier.width(IntrinsicSize.Max)) {
+                    TextButton(onClick = { tab = index }, modifier = Modifier.heightIn(min = 48.dp),
+                        contentPadding = PaddingValues(horizontal = 10.dp),
+                        colors = ButtonDefaults.textButtonColors(contentColor = LocalContentColor.current.copy(alpha = if (tab == index) 1f else 0.55f))) {
+                        Text(label, style = MaterialTheme.typography.labelLarge, fontWeight = if (tab == index) FontWeight.Bold else FontWeight.Normal)
                     }
-                    if (showAnalysis == analysis) HorizontalDivider(Modifier.padding(horizontal = 12.dp).size(width = if (analysis) 104.dp else 40.dp, height = 2.dp), color = LocalContentColor.current)
+                    if (tab == index) HorizontalDivider(Modifier.padding(horizontal = 10.dp).fillMaxWidth(), thickness = 2.dp, color = LocalContentColor.current)
                 }
             }
             Spacer(Modifier.weight(1f))
+            if (tab == 0 && canTranslate) {
+                when {
+                    translating -> Box(Modifier.size(48.dp), contentAlignment = Alignment.Center) {
+                        CircularProgressIndicator(Modifier.size(20.dp), strokeWidth = 2.dp, color = LocalContentColor.current)
+                    }
+                    // A saved translation: the button shows or hides it.
+                    acceptedTranslation != null -> IconButton(onClick = {
+                        companion.configure(mode = if (preferences.mode == "ORIGINAL") "BILINGUAL" else "ORIGINAL")
+                    }) {
+                        Icon(Icons.Filled.Translate, contentDescription = if (preferences.mode == "ORIGINAL") "Show translation" else "Hide translation",
+                            tint = LocalContentColor.current.copy(alpha = if (preferences.mode == "ORIGINAL") 0.55f else 1f))
+                    }
+                    else -> IconButton(onClick = ::translate) {
+                        Icon(Icons.Filled.Translate, contentDescription = "Translate lyrics", tint = LocalContentColor.current.copy(alpha = 0.55f))
+                    }
+                }
+            }
             Box {
                 IconButton(onClick = { menu = true }) { Icon(Icons.Filled.MoreVert, contentDescription = "Lyrics options") }
                 DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
-                    if (acceptedTranslation != null) DropdownMenuItem(text = { Text(if (preferences.mode == "ORIGINAL") "Show translation" else "Original only") }, onClick = {
-                        menu = false; companion.configure(mode = if (preferences.mode == "ORIGINAL") "BILINGUAL" else "ORIGINAL")
-                    })
-                    if (showAnalysis) {
-                        DropdownMenuItem(text = { Text("Ask / correct") }, onClick = { menu = false; storyRequest = "chat" })
-                        DropdownMenuItem(text = { Text("Rewrite the story") }, onClick = { menu = false; storyRequest = "rewrite" })
+                    if (acceptedTranslation != null) {
+                        DropdownMenuItem(text = { Text(if (preferences.mode == "ORIGINAL") "Show translation" else "Original only") }, onClick = {
+                            menu = false; companion.configure(mode = if (preferences.mode == "ORIGINAL") "BILINGUAL" else "ORIGINAL")
+                        })
+                        DropdownMenuItem(enabled = !translating, text = { Text("Translate again") }, onClick = { menu = false; translate() })
                     }
-                    DropdownMenuItem(text = { Text("Translation, edits & history") }, onClick = {
+                    DropdownMenuItem(text = { Text("Versions, editing & chat") }, onClick = {
                         menu = false; song?.let { context.navController.navigate(SongCompanionRoute(songId = it.id)) }
                     })
-                    DropdownMenuItem(text = { Text("Story prompt & settings") }, onClick = { menu = false; context.navController.navigate(CompanionSettingsRoute) })
+                    DropdownMenuItem(text = { Text("Language & settings") }, onClick = { menu = false; context.navController.navigate(CompanionSettingsRoute) })
                 }
             }
         }
-        if (showAnalysis) {
-            song?.let { InlineSongAnalysis(context, it.id, if (lyricsSongId == it.id) profileId else "", if (lyricsSongId == it.id) profileError else "", padding, request = storyRequest, onRequestHandled = { storyRequest = null }) }
+        if (tab == 0 && translating) Text("Translating…", Modifier.padding(horizontal = 22.dp),
+            style = MaterialTheme.typography.labelMedium, color = LocalContentColor.current.copy(alpha = 0.6f))
+        if (tab == 0 && !translating && translationError != null) Row(Modifier.padding(horizontal = 12.dp), verticalAlignment = Alignment.CenterVertically) {
+            Text("Translation failed: $translationError", Modifier.weight(1f).padding(start = 10.dp),
+                style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.error, maxLines = 2)
+            TextButton(onClick = ::translate) { Text("Retry") }
+        }
+        if (setup) AlertDialog(onDismissRequest = { setup = false }, text = { CompanionSetup(context) },
+            confirmButton = { TextButton(onClick = { setup = false }) { Text("Not now") } })
+        val songId = song?.id
+        val shownProfile = if (songId != null && lyricsSongId == songId) profileId else ""
+        val shownError = if (songId != null && lyricsSongId == songId) profileError else ""
+        if (tab == 1) {
+            if (songId != null) SongStoryTab(context, shownProfile, shownError, padding)
+        } else if (tab == 2) {
+            if (songId != null) SongMeaningTab(context, songId, shownProfile, shownError, padding)
         } else {
             AnimatedContent(
                 modifier = Modifier.weight(1f)
