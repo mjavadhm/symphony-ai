@@ -46,6 +46,27 @@ class MoodPersistencePolicyTest {
         assertEquals(listOf(current, seed, fresh, manual), updated)
         assertEquals(listOf(current, seed, manual), MoodQueuePolicy.replaceTail(listOf(current, seed, old, manual), 0, emptyList()))
     }
+    @Test fun `a missing past file does not shift the playing recording onto another row`() {
+        val missing = MoodQueueEntry(track = ref.copy(key = "gone"))
+        val current = MoodQueueEntry(track = ref.copy(key = "playing"))
+        val next = MoodQueueEntry(track = ref.copy(key = "next"))
+        val aligned = MoodQueuePolicy.align(listOf(missing, current, next), current.id) { if (it.key == "gone") null else it.key }
+        assertEquals(listOf("playing", "next"), aligned.songIds)
+        assertEquals(current, aligned.entries[aligned.index])
+        assertEquals(next, aligned.entries[aligned.advanceIndex])
+    }
+    @Test fun `a missing current recording advances to its successor without skipping it`() {
+        val missing = MoodQueueEntry(track = ref.copy(key = "gone"))
+        val next = MoodQueueEntry(track = ref.copy(key = "next"))
+        val aligned = MoodQueuePolicy.align(listOf(missing, next), missing.id) { if (it.key == "gone") null else it.key }
+        assertEquals(next, aligned.entries[aligned.advanceIndex])
+    }
+    @Test fun `a fresh run starts at its first generated suggestion`() {
+        val first = MoodQueueEntry(track = ref.copy(key = "first"))
+        val aligned = MoodQueuePolicy.align(listOf(first), null) { it.key }
+        assertEquals(0, aligned.advanceIndex)
+        assertEquals(first, aligned.entries[aligned.advanceIndex])
+    }
     @Test fun `clearing a mood reaction exposes the last ordinary explicit reaction`() {
         val ordinary = MixFeedback("a", "Song", "Artist", false, 1)
         val mood = ordinary.copy(liked = true, updatedAt = 2)

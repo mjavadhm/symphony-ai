@@ -81,6 +81,10 @@ class MoodSessionController(private val symphony: Symphony) : Symphony.Hooks {
         return catalogCache!!
     }
     fun song(ref: MoodTrackRef): Song? = catalog().resolve(ref)?.id?.let(symphony.groove.song::get)
+        ?: symphony.radio.queue.currentSongId?.let(symphony.groove.song::get)?.takeIf {
+            // The repository retains the loaded song even if its file vanished during a rescan.
+            it.uri.toString() == ref.uri || it.path == ref.path
+        }
     private fun reference(song: Song, known: List<MoodTrackRef> = emptyList()): MoodTrackRef {
         val catalog = catalog()
         return known.firstOrNull { it.uri == song.uri.toString() || it.path == song.path }
@@ -287,14 +291,17 @@ class MoodSessionController(private val symphony: Symphony) : Symphony.Hooks {
         val run = state.value.run ?: return
         val previous = run.queue.toMutableList()
         val refs = known(profile, state.value.visits, run)
-        val entries = symphony.radio.queue.currentQueue.mapNotNull { id ->
-            val song = symphony.groove.song.get(id) ?: return@mapNotNull null
+        val actualIndex = symphony.radio.queue.currentSongIndex
+        val entries = symphony.radio.queue.currentQueue.mapIndexedNotNull { index, id ->
+            val song = symphony.groove.song.get(id) ?: return@mapIndexedNotNull null
             val i = previous.indexOfFirst { this.song(it.track)?.id == id }
-            if (i >= 0) previous.removeAt(i) else MoodQueueEntry(track = reference(song, refs), kind = "manual")
+            index to if (i >= 0) previous.removeAt(i) else MoodQueueEntry(track = reference(song, refs), kind = "manual")
         }
-        mutableState.update { it.copy(run = run.copy(queue = entries,
-            index = symphony.radio.queue.currentSongIndex.coerceAtLeast(0),
-            positionMs = symphony.radio.currentPlaybackPosition?.played ?: run.positionMs)) }
+        val index = entries.indexOfFirst { it.first == actualIndex }.takeIf { it >= 0 }
+            ?: entries.count { it.first < actualIndex }.coerceAtMost((entries.size - 1).coerceAtLeast(0))
+        mutableState.update { it.copy(run = run.copy(queue = entries.map { it.second }, index = index,
+            positionMs = symphony.radio.currentPlaybackPosition?.played
+                ?: if (entries.getOrNull(index)?.second?.id == run.queue.getOrNull(run.index)?.id) run.positionMs else 0)) }
     }
 
     private fun embedding(song: Song) = symphony.semanticSearch.getMoodEmbedding(song.path, song.title, song.artists.joinToString(), song.duration)
@@ -350,15 +357,16 @@ class MoodSessionController(private val symphony: Symphony) : Symphony.Hooks {
         if (!attached || token != revision.get() || state.value.run?.id != run.id) return
         val generated = existingGenerated + picks.map { MoodQueueEntry(track = it.track, discovery = it.discovery) }
         val queue = if (replace) MoodQueuePolicy.replaceTail(run.queue, run.index, generated) else run.queue + generated.drop(existingGenerated.size)
-        val updated = run.copy(queue = queue)
-        mutableState.update { it.copy(run = updated, exhausted = generated.isEmpty() && pinned.isEmpty(),
+        val playable = MoodQueuePolicy.align(queue, run.queue.getOrNull(run.index)?.id) { song(it)?.id }
+        val updated = run.copy(queue = playable.entries, index = playable.index)
+        val exhausted = playable.advanceIndex >= playable.entries.size
+        mutableState.update { it.copy(run = updated, exhausted = exhausted,
             message = if (points.none { point -> point.weight > 0 }) "No available positive references. Analyze songs or create a new mood."
-                else if (generated.isEmpty() && pinned.isEmpty()) "No more matching songs in this run. Start fresh to hear this mood again." else "") }
-        changeQueue { symphony.radio.queue.replaceMoodQueue(queue.mapNotNull { song(it.track)?.id }, run.index) }
+                else if (exhausted) "No more matching songs in this run. Start fresh to hear this mood again." else "") }
+        changeQueue { symphony.radio.queue.replaceMoodQueue(playable.songIds, playable.index) }
         save()
         if (advance && playToken == playIntentRevision.get()) {
-            val next = run.index + 1
-            val startAt = if (current.isEmpty()) 0 else next
+            val startAt = playable.advanceIndex
             if (symphony.radio.queue.hasSongAt(startAt)) symphony.radio.play(Radio.PlayOptions(startAt), reason = "next")
             else symphony.radio.pauseInstant()
         }

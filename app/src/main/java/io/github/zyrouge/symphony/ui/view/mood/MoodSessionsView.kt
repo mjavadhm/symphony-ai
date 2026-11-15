@@ -35,7 +35,6 @@ object MoodSessionsRoute
 fun MoodSessionsView(context: ViewContext) {
     val service = context.symphony.moods
     val state by service.state.collectAsState()
-    val queueIndex by context.symphony.radio.observatory.queueIndex.collectAsState()
     val playing by context.symphony.radio.observatory.isPlaying.collectAsState()
     var picker by rememberSaveable { mutableStateOf(false) }
     var settings by remember { mutableStateOf(false) }
@@ -43,7 +42,7 @@ fun MoodSessionsView(context: ViewContext) {
     var deleting by remember { mutableStateOf<MoodProfile?>(null) }
     val profile = state.profile
     val run = state.run
-    val currentIndex = if (state.attached) queueIndex else run?.index ?: 0
+    val currentIndex = run?.index ?: 0
     val current = run?.queue?.getOrNull(currentIndex)
     val listState = rememberLazyListState()
     LaunchedEffect(profile?.id, run?.id) { if (profile != null) listState.animateScrollToItem(1) }

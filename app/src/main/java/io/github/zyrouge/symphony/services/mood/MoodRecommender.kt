@@ -60,6 +60,17 @@ class MoodPlaybackEvidence {
 }
 
 object MoodQueuePolicy {
+    data class Playable(val entries: List<MoodQueueEntry>, val songIds: List<String>, val index: Int, val advanceIndex: Int)
+
+    fun align(queue: List<MoodQueueEntry>, currentEntryId: String?, resolve: (MoodTrackRef) -> String?): Playable {
+        val rows = queue.mapIndexedNotNull { index, entry -> resolve(entry.track)?.let { Triple(index, entry, it) } }
+        val originalIndex = queue.indexOfFirst { it.id == currentEntryId }
+        val current = rows.indexOfFirst { it.second.id == currentEntryId }
+        val successor = if (originalIndex < 0) 0 else rows.count { it.first < originalIndex }
+        val index = if (current >= 0) current else successor.coerceAtMost((rows.size - 1).coerceAtLeast(0))
+        return Playable(rows.map { it.second }, rows.map { it.third }, index, if (current >= 0) current + 1 else successor)
+    }
+
     fun replaceTail(queue: List<MoodQueueEntry>, index: Int, generated: List<MoodQueueEntry>): List<MoodQueueEntry> {
         val prefix = queue.take(index + 1)
         val replacements = generated.iterator()
