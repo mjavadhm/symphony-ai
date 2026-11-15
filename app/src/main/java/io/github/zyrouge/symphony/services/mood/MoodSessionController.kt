@@ -45,6 +45,8 @@ class MoodSessionController(private val symphony: Symphony) : Symphony.Hooks {
         private set
     private var unsubscribe: EventUnsubscribeFn? = null
     private var checkpointJob: Job? = null
+    private var profilesJob: Job? = null
+    @Volatile private var shuttingDown = false
     private var changingQueue = false
     private var catalogIds: List<String>? = null
     private var catalogCache: MoodCatalog? = null
@@ -229,7 +231,7 @@ class MoodSessionController(private val symphony: Symphony) : Symphony.Hooks {
         snapshot()
         attached = false
         mutableState.update { it.copy(attached = false) }
-        prefs.edit().remove("active_run").apply()
+        if (!shuttingDown) prefs.edit().remove("active_run").apply()
         if (symphony.radio.playbackSource.startsWith("mood:")) symphony.radio.playbackSource = "queue"
         command { save() }
     }
@@ -242,6 +244,8 @@ class MoodSessionController(private val symphony: Symphony) : Symphony.Hooks {
     }
 
     fun cancelPendingAdvance() { if (attached) playIntentRevision.incrementAndGet() }
+
+    fun prepareShutdown() { shuttingDown = true }
 
     fun playbackTag(songId: String): MoodPlaybackTag? {
         if (!attached) return null
@@ -387,7 +391,7 @@ class MoodSessionController(private val symphony: Symphony) : Symphony.Hooks {
     }
 
     override fun onSymphonyReady() {
-        scope.launch {
+        profilesJob = scope.launch {
             dao.observeProfiles().catch { e ->
                 Diagnostics.event("ERROR", "mood", "profile_load_failed", e)
                 mutableState.update { it.copy(message = "Could not load saved moods") }
@@ -405,7 +409,7 @@ class MoodSessionController(private val symphony: Symphony) : Symphony.Hooks {
     }
     override fun onSymphonyActivityPause() { if (attached) command { snapshot(); save() } }
     override fun onSymphonyDestroy() {
-        unsubscribe?.invoke(); checkpointJob?.cancel()
+        unsubscribe?.invoke(); checkpointJob?.cancel(); profilesJob?.cancel()
         scope.launch { mutex.withLock { save() }; io { db.close() }; scope.cancel() }
     }
 }

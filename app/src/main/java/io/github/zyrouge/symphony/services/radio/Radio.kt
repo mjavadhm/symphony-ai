@@ -85,6 +85,7 @@ class Radio(private val symphony: Symphony) : Symphony.Hooks {
     }
 
     fun destroy() {
+        symphony.moods.prepareShutdown()
         stop()
         observatory.destroy()
         session.destroy()
