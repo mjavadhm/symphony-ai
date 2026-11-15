@@ -24,7 +24,9 @@ data class DocumentFileX(
             DocumentsContract.getDocumentId(uri)
         )
         val items = mutableListOf<DocumentFileX>()
-        context.contentResolver.query(childrenUri, selectionColumns, null, null, null)?.use {
+        val cursor = context.contentResolver.query(childrenUri, selectionColumns, null, null, null)
+            ?: throw java.io.IOException("Could not list music folder")
+        cursor.use {
             while (it.moveToNext()) {
                 val file = fromCursor(context, it) { id ->
                     DocumentsContract.buildDocumentUriUsingTree(uri, id)

@@ -9,6 +9,7 @@ core = "1.15.0"
 core-splashscreen = "1.0.1"
 fuzzywuzzy = "1.4.0"
 junit-jupiter = "5.11.3"
+kotlinx-coroutines = "1.9.0"
 kotlinx-serialization-json = "1.7.3"
 lifecycle-runtime = "2.8.7"
 media = "1.7.0"
@@ -46,6 +47,7 @@ core = { group = "androidx.core", name = "core-ktx", version.ref = "core" }
 core-splashscreen = { group = "androidx.core", name = "core-splashscreen", version.ref = "core-splashscreen" }
 fuzzywuzzy = { group = "me.xdrop", name = "fuzzywuzzy", version.ref = "fuzzywuzzy" }
 junit-jupiter = { group = "org.junit.jupiter", name = "junit-jupiter", version.ref = "junit-jupiter" }
+kotlinx-coroutines-test = { group = "org.jetbrains.kotlinx", name = "kotlinx-coroutines-test", version.ref = "kotlinx-coroutines" }
 kotlinx-serialization-json = { group = "org.jetbrains.kotlinx", name = "kotlinx-serialization-json", version.ref = "kotlinx-serialization-json" }
 lifecycle-runtime = { group = "androidx.lifecycle", name = "lifecycle-runtime-ktx", version.ref = "lifecycle-runtime" }
 media = { group = "androidx.media", name = "media", version.ref = "media" }

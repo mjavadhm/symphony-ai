@@ -8,12 +8,15 @@ import android.os.Build
 import android.os.Environment
 import android.provider.MediaStore
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.delay
-import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.ensureActive
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Semaphore
 import kotlinx.coroutines.sync.withPermit
@@ -22,6 +25,7 @@ import java.io.FileInputStream
 import java.io.FileOutputStream
 import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicLong
+import java.util.concurrent.ConcurrentHashMap
 
 /**
  * Two-phase Spotizer download pipeline:
@@ -77,27 +81,23 @@ class SpotizerDownloadManager(
 
     private val scope = CoroutineScope(Dispatchers.IO + SupervisorJob())
     private val nextId = AtomicLong(1L)
-    private val jobs = mutableMapOf<Long, Job>()
+    private val jobs = ConcurrentHashMap<Long, Job>()
     private var semaphore = Semaphore(settings.maxConcurrentDownloads.value)
     private var semaphoreSize = settings.maxConcurrentDownloads.value
     private val libraryRefreshPending = AtomicBoolean(false)
 
-    private val _items = MutableStateFlow<List<Item>>(emptyList())
-    val items: StateFlow<List<Item>> = _items
+    private val state = SpotizerDownloadState()
+    val items: StateFlow<List<Item>> = state.items
 
     /** Returns false when the track is already queued or running. */
     fun enqueueTrack(track: SpotizerTrack): Boolean {
-        val trackId = track.id ?: return false
-        val alreadyQueued = _items.value.any { it.track.id == trackId && it.isActive }
-        if (alreadyQueued) {
-            return false
-        }
+        if (track.id == null) return false
         val item = Item(
             id = nextId.getAndIncrement(),
             track = track,
             quality = settings.downloadQuality.value,
         )
-        _items.value = _items.value + item
+        if (!state.enqueue(item)) return false
         startJob(item.id)
         return true
     }
@@ -122,30 +122,24 @@ class SpotizerDownloadManager(
     }
 
     fun cancel(itemId: Long) {
-        jobs.remove(itemId)?.cancel()
         update(itemId) { it.copy(phase = Phase.Cancelled) }
+        jobs.remove(itemId)?.cancel()
     }
 
     fun retry(itemId: Long) {
-        val item = _items.value.find { it.id == itemId } ?: return
-        if (item.isActive) {
-            return
-        }
-        update(itemId) {
-            it.copy(phase = Phase.Queued, downloadedBytes = 0L, totalBytes = 0L, error = null)
-        }
+        if (!state.retry(itemId)) return
         startJob(itemId)
     }
 
     fun clearFinished() {
-        _items.value = _items.value.filter { it.isActive }
+        state.clearFinished()
     }
 
     private fun update(itemId: Long, transform: (Item) -> Item) {
-        _items.value = _items.value.map { if (it.id == itemId) transform(it) else it }
+        state.update(itemId, transform)
     }
 
-    private fun currentItem(itemId: Long) = _items.value.find { it.id == itemId }
+    private fun currentItem(itemId: Long) = items.value.find { it.id == itemId }
 
     /**
      * Schedules a single library refresh for the current download burst. Waits for
@@ -158,7 +152,7 @@ class SpotizerDownloadManager(
         }
         scope.launch {
             try {
-                while (_items.value.any { it.isActive }) {
+                while (items.value.any { it.isActive }) {
                     delay(1000)
                 }
                 // Give MediaStore a moment to publish the freshly written files.
@@ -181,26 +175,30 @@ class SpotizerDownloadManager(
     private fun startJob(itemId: Long) {
         refreshSemaphore()
         val gate = semaphore
-        val job = scope.launch {
-            gate.withPermit {
-                runCatching { process(itemId) }.onFailure { failure ->
-                    if (failure is kotlinx.coroutines.CancellationException) throw failure
-                    io.github.zyrouge.symphony.services.diagnostics.Diagnostics.event(
-                        "ERROR", "spotizer", "download_or_save_failed", failure,
-                    )
-                    if (currentItem(itemId)?.isActive == true) {
-                        update(itemId) {
-                            it.copy(
-                                phase = Phase.Failed,
-                                error = failure.message ?: "Unexpected error",
-                            )
+        val job = scope.launch(start = CoroutineStart.LAZY) {
+            try {
+                gate.withPermit {
+                    runCatching { process(itemId) }.onFailure { failure ->
+                        if (failure is kotlinx.coroutines.CancellationException) throw failure
+                        io.github.zyrouge.symphony.services.diagnostics.Diagnostics.event(
+                            "ERROR", "spotizer", "download_or_save_failed", failure,
+                        )
+                        if (currentItem(itemId)?.isActive == true) {
+                            update(itemId) {
+                                it.copy(
+                                    phase = Phase.Failed,
+                                    error = failure.message ?: "Unexpected error",
+                                )
+                            }
                         }
                     }
                 }
+            } finally {
+                jobs.remove(itemId, currentCoroutineContext()[Job])
             }
-            jobs.remove(itemId)
         }
         jobs[itemId] = job
+        job.start()
     }
 
     private fun isWifiConnected(): Boolean {
@@ -248,6 +246,7 @@ class SpotizerDownloadManager(
         val maxPrepareAttempts = 40
 
         while (true) {
+            currentCoroutineContext().ensureActive()
             if (currentItem(itemId)?.phase == Phase.Cancelled) {
                 return
             }
@@ -257,6 +256,10 @@ class SpotizerDownloadManager(
                 requestBuilder.header("Range", "bytes=" + existingBytes + "-")
             }
             val response = client.http.newCall(requestBuilder.build()).execute()
+            if (!currentCoroutineContext().isActive) {
+                response.close()
+                currentCoroutineContext().ensureActive()
+            }
             when {
                 response.code == 504 -> {
                     response.close()
@@ -298,6 +301,7 @@ class SpotizerDownloadManager(
                             FileOutputStream(tempFile, resuming).use { output ->
                                 val buffer = ByteArray(64 * 1024)
                                 while (true) {
+                                    currentCoroutineContext().ensureActive()
                                     if (currentItem(itemId)?.phase == Phase.Cancelled) {
                                         return
                                     }
@@ -318,6 +322,7 @@ class SpotizerDownloadManager(
                             }
                         }
                     }
+                    currentCoroutineContext().ensureActive()
                     update(itemId) { it.copy(downloadedBytes = downloaded, phase = Phase.Saving) }
                     saveToMediaStore(itemId, tempFile, status)
                     return

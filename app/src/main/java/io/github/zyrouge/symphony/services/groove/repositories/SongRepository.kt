@@ -17,7 +17,6 @@ import io.github.zyrouge.symphony.utils.withCase
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
-import java.util.concurrent.ConcurrentHashMap
 
 class SongRepository(private val symphony: Symphony) {
     enum class SortBy {
@@ -34,8 +33,8 @@ class SongRepository(private val symphony: Symphony) {
         TRACK_NUMBER,
     }
 
-    private val cache = ConcurrentHashMap<String, Song>()
-    internal val pathCache = ConcurrentHashMap<String, String>()
+    private val index = SongLibraryIndex<Song>({ it.id }, { it.path })
+    internal val pathCache get() = index.paths
     internal val idGenerator = KeyGenerator.TimeIncremental()
     private val searcher = FuzzySearcher<String>(
         options = listOf(
@@ -47,39 +46,41 @@ class SongRepository(private val symphony: Symphony) {
     )
 
     val isUpdating get() = symphony.groove.exposer.isUpdating
-    private val _all = MutableStateFlow<List<String>>(emptyList())
-    val all = _all.asStateFlow()
+    val all = index.ids
     private val _count = MutableStateFlow(0)
     val count = _count.asStateFlow()
     private val _id = MutableStateFlow(System.currentTimeMillis())
     val id = _id.asStateFlow()
     var explorer = SimpleFileSystem.Folder()
 
-    private fun emitCount() = _count.update { cache.size }
+    private fun emitCount() = _count.update { all.value.size }
 
     private fun emitIds() = _id.update {
         System.currentTimeMillis()
     }
 
     internal fun onSong(song: Song) {
-        cache[song.id] = song
-        pathCache[song.path] = song.id
-        explorer.addChildFile(SimplePath(song.path)).data = song.id
+        index.put(song)
+        explorer.addChildFileIfAbsent(SimplePath(song.path))?.data = song.id
         emitIds()
-        _all.update {
-            it + song.id
-        }
         emitCount()
     }
 
     fun reset() {
-        // cache و pathCache عمداً نگه داشته میشن تا حین rescan،
-        // آهنگ در حال پخش و صف همچنان قابل resolve باشن و پخش قطع نشه.
+        // Keep playback lookups available until the completed scan can reconcile them.
         explorer = SimpleFileSystem.Folder()
+        index.reset()
         emitIds()
-        _all.update {
-            emptyList()
+        emitCount()
+    }
+
+    internal fun finishScan(seenIds: Set<String>) {
+        val retained = if (symphony.radio.hasPlayer) setOfNotNull(symphony.radio.queue.currentSongId) else emptySet()
+        index.finishScan(seenIds, retained)
+        explorer = SimpleFileSystem.Folder().also { tree ->
+            index.values().forEach { tree.addChildFileIfAbsent(SimplePath(it.path))?.data = it.id }
         }
+        emitIds()
         emitCount()
     }
 
@@ -112,11 +113,11 @@ class SongRepository(private val symphony: Symphony) {
         return if (reverse) sorted.reversed() else sorted
     }
 
-    fun count() = cache.size
-    fun ids() = cache.keys.toList()
-    fun values() = cache.values.toList()
+    fun count() = all.value.size
+    fun ids() = all.value
+    fun values() = index.values()
 
-    fun get(id: String) = cache[id]
+    fun get(id: String) = index[id]
     fun get(ids: List<String>) = ids.mapNotNull { get(it) }
 
     fun getArtworkUri(songId: String): Uri = get(songId)?.coverFile

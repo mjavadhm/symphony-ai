@@ -143,7 +143,7 @@ class Radio(private val symphony: Symphony) : Symphony.Hooks {
                     // happens when change playback params fail, we skip it since its non-critical
                     what == 1 && extra == -22 -> onSongFinish(SongFinishSource.Finish)
                     else -> {
-                        queue.remove(queue.currentSongIndex)
+                        queue.remove(queue.currentSongIndex, restartPlayback = false)
                         onSongFinish(SongFinishSource.Exception)
                     }
                 }
@@ -157,7 +157,8 @@ class Radio(private val symphony: Symphony) : Symphony.Hooks {
                 "skipping song ${queue.currentSongId} (${queue.currentSongIndex})",
                 err,
             )
-            queue.remove(queue.currentSongIndex)
+            queue.remove(queue.currentSongIndex, restartPlayback = false)
+            onSongFinish(SongFinishSource.Exception)
         }
     }
 

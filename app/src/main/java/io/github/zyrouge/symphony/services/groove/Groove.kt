@@ -13,6 +13,8 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 
 class Groove(private val symphony: Symphony) : Symphony.Hooks {
     enum class Kind {
@@ -25,6 +27,7 @@ class Groove(private val symphony: Symphony) : Symphony.Hooks {
     }
 
     val coroutineScope = CoroutineScope(Dispatchers.Default)
+    private val scanMutex = Mutex()
     var readyDeferred = CompletableDeferred<Boolean>()
 
     val exposer = MediaExposer(symphony)
@@ -35,7 +38,9 @@ class Groove(private val symphony: Symphony) : Symphony.Hooks {
     val genre = GenreRepository(symphony)
     val playlist = PlaylistRepository(symphony)
 
-    private suspend fun fetch() {
+    private suspend fun fetchLibrary(options: FetchOptions = FetchOptions()) = scanMutex.withLock {
+        if (options.resetInMemoryCache) reset()
+        if (options.resetPersistentCache) clearCache()
         coroutineScope.launch {
             awaitAll(
                 async { exposer.fetch() },
@@ -71,19 +76,13 @@ class Groove(private val symphony: Symphony) : Symphony.Hooks {
 
     fun fetch(options: FetchOptions) {
         coroutineScope.launch {
-            if (options.resetInMemoryCache) {
-                reset()
-            }
-            if (options.resetPersistentCache) {
-                clearCache()
-            }
-            fetch()
+            fetchLibrary(options)
         }
     }
 
     override fun onSymphonyReady() {
         coroutineScope.launch {
-            fetch()
+            fetchLibrary()
             readyDeferred.complete(true)
         }
     }

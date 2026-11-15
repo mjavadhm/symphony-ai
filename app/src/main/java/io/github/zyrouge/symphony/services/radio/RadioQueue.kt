@@ -134,34 +134,22 @@ class RadioQueue(private val symphony: Symphony) {
         symphony.radio.onUpdate.dispatch(Radio.Events.Queue.Modified)
     }
 
-    fun remove(index: Int) {
-        originalQueue.removeAt(index)
-        currentQueue.removeAt(index)
-        symphony.radio.onUpdate.dispatch(Radio.Events.Queue.Modified)
-        if (currentSongIndex == index) {
-            symphony.radio.play(Radio.PlayOptions(index = currentSongIndex))
-        } else if (index < currentSongIndex) {
-            currentSongIndex--
-        }
-    }
+    fun remove(index: Int, restartPlayback: Boolean = true) = remove(listOf(index), restartPlayback)
 
-    fun remove(indices: List<Int>) {
-        var deflection = 0
-        var currentSongRemoved = false
-        val sortedIndices = indices.sortedDescending()
-        for (i in sortedIndices) {
-            val index = i - deflection
-            originalQueue.removeAt(index)
-            currentQueue.removeAt(index)
-            when {
-                i < currentSongIndex -> deflection++
-                i == currentSongIndex -> currentSongRemoved = true
-            }
-        }
-        currentSongIndex -= deflection
+    fun remove(indices: List<Int>, restartPlayback: Boolean = true) {
+        val result = QueueRemoval.remove(originalQueue.toList(), currentQueue.toList(), currentSongIndex, indices)
+        if (result.current == currentQueue) return
+        val wasPlaying = symphony.radio.isPlaying
+        originalQueue.clear()
+        originalQueue.addAll(result.original)
+        currentQueue.clear()
+        currentQueue.addAll(result.current)
+        currentSongIndex = result.currentIndex
         symphony.radio.onUpdate.dispatch(Radio.Events.Queue.Modified)
-        if (currentSongRemoved) {
-            symphony.radio.play(Radio.PlayOptions(index = currentSongIndex))
+        if (result.current.isEmpty()) {
+            symphony.radio.stop()
+        } else if (result.currentRemoved && restartPlayback) {
+            symphony.radio.play(Radio.PlayOptions(index = currentSongIndex, autostart = wasPlaying))
         }
     }
 

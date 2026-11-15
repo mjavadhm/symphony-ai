@@ -152,4 +152,5 @@ dependencies {
     androidTestImplementation(libs.ext.junit)
     androidTestImplementation("androidx.test:runner:1.6.2")
     testImplementation(libs.junit.jupiter)
+    testImplementation(libs.kotlinx.coroutines.test)
 }

@@ -19,6 +19,7 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.withContext
 import java.util.concurrent.ConcurrentHashMap
+import java.util.concurrent.atomic.AtomicBoolean
 import kotlin.time.Duration.Companion.milliseconds
 import kotlin.time.Duration.Companion.seconds
 
@@ -39,6 +40,9 @@ class MediaExposer(private val symphony: Symphony) {
         val lyricsCacheUnused: ConcurrentSet<String>,
         val filter: MediaFilter,
         val songParseOptions: Song.ParseOptions,
+        val seenSongIds: ConcurrentSet<String> = concurrentSetOf(),
+        val seenPaths: ConcurrentSet<String> = concurrentSetOf(),
+        val complete: AtomicBoolean = AtomicBoolean(true),
     ) {
         companion object {
             suspend fun create(symphony: Symphony): ScanCycle {
@@ -72,14 +76,25 @@ class MediaExposer(private val symphony: Symphony) {
             val cycle = ScanCycle.create(symphony)
             folderUris.map { x ->
                 ActivityUtils.makePersistableReadableUri(context, x)
-                DocumentFileX.fromTreeUri(context, x)?.let {
+                val root = DocumentFileX.fromTreeUri(context, x)
+                if (root == null) {
+                    cycle.complete.set(false)
+                } else root.let {
                     val path = SimplePath(DocumentFileX.getParentPathOfTreeUri(x) ?: it.name)
                     with(Dispatchers.IO) {
                         scanMediaTree(cycle, path, it)
                     }
                 }
             }
-            trimCache(cycle)
+            // Missing entries are only evidence of deletion after a complete, successful scan.
+            if (cycle.complete.get()) {
+                trimCache(cycle)
+                uris.keys.retainAll(cycle.seenPaths)
+                explorer = SimpleFileSystem.Folder().also { tree ->
+                    cycle.seenPaths.forEach { tree.addChildFileIfAbsent(SimplePath(it)) }
+                }
+                withContext(Dispatchers.Main) { symphony.groove.song.finishScan(cycle.seenSongIds.toSet()) }
+            }
         } catch (err: Exception) {
             Logger.error("MediaExposer", "fetch failed", err)
         }
@@ -104,6 +119,7 @@ class MediaExposer(private val symphony: Symphony) {
                 }.awaitAll()
             }
         } catch (err: Exception) {
+            cycle.complete.set(false)
             Logger.error("MediaExposer", "scan media tree failed", err)
         }
     }
@@ -116,6 +132,7 @@ class MediaExposer(private val symphony: Symphony) {
                 file.mimeType.startsWith("audio/") -> scanAudioFile(cycle, path, file)
             }
         } catch (err: Exception) {
+            cycle.complete.set(false)
             Logger.error("MediaExposer", "scan media file failed", err)
         }
     }
@@ -152,27 +169,35 @@ class MediaExposer(private val symphony: Symphony) {
         // emitting it again would count it twice in its album and artist. (This used to throw and log an error
         // for every known file on every rescan.) The cache bookkeeping above must still run, or trimCache
         // would delete the cache entries of known songs.
-        explorer.addChildFileIfAbsent(path) ?: return
+        cycle.seenPaths.add(pathString)
+        if (explorer.addChildFileIfAbsent(path) == null) {
+            // Until a full reset, the existing album/artist entries still refer to this in-memory ID.
+            symphony.groove.song.pathCache[pathString]?.let { cycle.seenSongIds.add(it) }
+            return
+        }
+        cycle.seenSongIds.add(song.id)
         withContext(Dispatchers.Main) {
             emitSong(song)
         }
     }
 
     private fun scanLrcFile(
-        @Suppress("Unused") cycle: ScanCycle,
+        cycle: ScanCycle,
         path: SimplePath,
         file: DocumentFileX,
     ) {
         uris[path.pathString] = file.uri
+        cycle.seenPaths.add(path.pathString)
         explorer.addChildFileIfAbsent(path)
     }
 
     private fun scanM3UFile(
-        @Suppress("Unused") cycle: ScanCycle,
+        cycle: ScanCycle,
         path: SimplePath,
         file: DocumentFileX,
     ) {
         uris[path.pathString] = file.uri
+        cycle.seenPaths.add(path.pathString)
         explorer.addChildFileIfAbsent(path)
     }
 
