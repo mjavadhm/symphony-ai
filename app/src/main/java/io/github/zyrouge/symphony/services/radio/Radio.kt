@@ -341,8 +341,8 @@ class Radio(private val symphony: Symphony) : Symphony.Hooks {
             p.setOnPlaybackPositionListener {}
             p.moodTag?.let { tag -> symphony.moods.recordVisit(tag, p.visitId, p.activelyPlayedMs, p.coveredMs, reason) }
             
-            // Log playback history (only from 5 seconds up — skips get recorded too)
-            if (p.activelyPlayedMs >= 5_000) {
+            // Mood visits retain even quick skips so the shared learner can use their weak evidence.
+            if (p.activelyPlayedMs >= 5_000 || (p.moodTag != null && p.activelyPlayedMs > 0)) {
                 val playedMs = p.activelyPlayedMs
                 val song = symphony.groove.song.get(p.id)
                 // Snapshot before another queue/session changes these mutable values.

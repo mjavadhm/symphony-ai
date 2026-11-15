@@ -4,6 +4,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
@@ -29,6 +30,7 @@ import kotlinx.serialization.Serializable
 @Serializable
 object MoodSessionsRoute
 
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun MoodSessionsView(context: ViewContext) {
     val service = context.symphony.moods
@@ -43,11 +45,13 @@ fun MoodSessionsView(context: ViewContext) {
     val run = state.run
     val currentIndex = if (state.attached) queueIndex else run?.index ?: 0
     val current = run?.queue?.getOrNull(currentIndex)
+    val listState = rememberLazyListState()
+    LaunchedEffect(profile?.id, run?.id) { if (profile != null) listState.animateScrollToItem(1) }
 
     GlassSettingsScaffold(context, "Mood Session · Experimental", topBarActions = {
         if (profile != null) TextButton(onClick = { settings = true }) { Text("Settings") }
     }) { padding ->
-        LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(
+        LazyColumn(Modifier.fillMaxSize(), state = listState, contentPadding = PaddingValues(
             top = padding.calculateTopPadding() + 16.dp, bottom = padding.calculateBottomPadding() + 24.dp,
             start = 16.dp, end = 16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
             item {
@@ -62,7 +66,7 @@ fun MoodSessionsView(context: ViewContext) {
                     HorizontalDivider()
                     ReadableText(profile.name, style = MaterialTheme.typography.titleLarge)
                     Text(if (state.attached) "Current session · changes are saved automatically" else "Session saved on this device")
-                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         TextButton(onClick = { naming = profile }) { Text(if (profile.saved) "Rename" else "Save mood") }
                         TextButton(enabled = !state.busy, onClick = { service.resume(profile.id, fresh = true) }) { Text("Start fresh") }
                         if (state.attached) TextButton(onClick = service::normalPlayback) { Text("Normal playback") }
@@ -74,7 +78,7 @@ fun MoodSessionsView(context: ViewContext) {
                         ReadableText(current.track.title, style = MaterialTheme.typography.titleMedium)
                         ReadableText(current.track.artists.joinToString(), style = MaterialTheme.typography.bodySmall)
                         MoodReactionButtons(context, profile, current.track)
-                        Row {
+                        FlowRow {
                             Button(onClick = {
                                 if (state.attached) context.symphony.radio.shorty.playPause() else service.resume(profile.id)
                             }) { Text(if (state.attached && playing) "Pause" else "Continue") }
@@ -111,7 +115,7 @@ fun MoodSessionsView(context: ViewContext) {
                 Card(Modifier.fillMaxWidth()) { Column(Modifier.padding(12.dp)) {
                     ReadableText(saved.name, style = MaterialTheme.typography.titleMedium)
                     Text(if (saved.saved) "Saved mood" else "Recent session", style = MaterialTheme.typography.bodySmall)
-                    Row {
+                    FlowRow {
                         TextButton(enabled = !state.busy, onClick = { service.resume(saved.id) }) { Text("Continue") }
                         TextButton(enabled = !state.busy, onClick = { service.resume(saved.id, fresh = true) }) { Text("Fresh queue") }
                         TextButton(enabled = !state.busy, onClick = { naming = saved }) { Text(if (saved.saved) "Rename" else "Save") }
@@ -150,10 +154,11 @@ fun MoodPlayerReactions(context: ViewContext, songId: String) {
     }
 }
 
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun MoodReactionButtons(context: ViewContext, profile: MoodProfile, track: MoodTrackRef) {
     val reaction = profile.reactions[track.key]?.value
-    Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+    FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
         FilterChip(selected = reaction == 1,
             onClick = { context.symphony.moods.react(profile.id, track, if (reaction == 1) null else 1) },
             label = { Text("Good for now") }, leadingIcon = { Icon(Icons.Filled.ThumbUp, null, Modifier.size(16.dp)) })
@@ -168,7 +173,7 @@ private fun MoodSettings(profile: MoodProfile, dismiss: () -> Unit, save: (Float
     var discovery by remember(profile.id) { mutableFloatStateOf(profile.discovery) }
     var days by remember(profile.id) { mutableIntStateOf(profile.familiarDays) }
     AlertDialog(onDismissRequest = dismiss, title = { Text("This mood's settings") }, text = {
-        Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(12.dp)) {
             Text("Discovery: ${(discovery * 100).toInt()}%")
             Slider(discovery, { discovery = it }, valueRange = 0f..1f, steps = 9)
             Text("Familiar ← → Discovery")
@@ -199,7 +204,7 @@ private fun MoodSeedPicker(context: ViewContext, dismiss: () -> Unit, start: (Li
         }
     }
     AlertDialog(onDismissRequest = dismiss, title = { Text("Choose 1–5 starting songs") }, text = {
-        Column(Modifier.heightIn(max = 520.dp)) {
+        Column(Modifier.heightIn(max = 520.dp).verticalScroll(rememberScrollState())) {
             Text("Three is a good start. These songs play first, in the order below.")
             selected.forEachIndexed { index, id -> context.symphony.groove.song.get(id)?.let { song ->
                 Row(verticalAlignment = Alignment.CenterVertically) {
@@ -212,7 +217,7 @@ private fun MoodSeedPicker(context: ViewContext, dismiss: () -> Unit, start: (Li
             } }
             OutlinedTextField(query, { query = it }, label = { Text("Search your library") }, singleLine = true)
             TextButton(onClick = { dismiss(); context.navController.navigate(IndexSongsSettingsRoute) }) { Text("Analyze songs first") }
-            LazyColumn(Modifier.weight(1f, fill = false)) {
+            LazyColumn(Modifier.height(240.dp)) {
                 items(rows, key = { it.first.id }) { (song, indexed) ->
                     ListItem(headlineContent = { ReadableText(song.title) }, supportingContent = {
                         Text(if (indexed) song.artists.joinToString() else "Not analyzed yet")

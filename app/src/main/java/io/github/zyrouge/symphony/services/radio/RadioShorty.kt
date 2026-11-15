@@ -6,6 +6,7 @@ import kotlin.random.Random
 class RadioShorty(private val symphony: Symphony) {
     fun playPause() {
         if (!symphony.radio.hasPlayer) {
+            if (symphony.moods.attached) symphony.moods.requestNext()
             return
         }
         when {

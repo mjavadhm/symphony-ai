@@ -1,8 +1,6 @@
 package io.github.zyrouge.symphony.services.mood
 
 import io.github.zyrouge.symphony.services.database.entities.MixFeedback
-import kotlinx.serialization.encodeToString
-import kotlinx.serialization.json.Json
 import org.junit.jupiter.api.Assertions.*
 import org.junit.jupiter.api.Test
 
@@ -14,11 +12,11 @@ class MoodPersistencePolicyTest {
     @Test fun `session snapshots retain identity reactions settings and checkpoint`() {
         val profile = MoodProfile(seeds = listOf(ref), saved = true, name = "Night", discovery = 0.7f, familiarDays = 14,
             reactions = mapOf(ref.key to MoodReaction(ref, 1)))
-        val restored = Json.decodeFromString<MoodProfile>(Json.encodeToString(profile))
+        val restored = MoodJson.profile(MoodJson.row(profile))
         assertEquals(profile, restored)
         val run = MoodRun(profileId = profile.id, queue = listOf(MoodQueueEntry(track = ref, kind = "seed")), positionMs = 45000,
             playedKeys = setOf("other"), discoveryHistory = listOf(true, false))
-        assertEquals(run, Json.decodeFromString<MoodRun>(Json.encodeToString(run)))
+        assertEquals(run, MoodJson.run(MoodJson.row(run)))
         val fresh = MoodRun(profileId = restored.id)
         assertNotEquals(run.id, fresh.id)
         assertTrue(fresh.playedKeys.isEmpty())

@@ -329,8 +329,10 @@ fun NowPlayingTraditionalControls(context: ViewContext, data: NowPlayingData) {
 @Composable
 private fun NowPlayingShuffleButton(context: ViewContext, data: NowPlayingData) {
     val view = LocalView.current
+    val mood by context.symphony.moods.state.collectAsState()
     val smartShuffle by context.symphony.radio.queue.smartShuffleMode.collectAsState()
     IconButton(
+        enabled = !mood.attached,
         onClick = {
             view.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
             context.symphony.radio.queue.cycleShuffleMode()
@@ -341,8 +343,9 @@ private fun NowPlayingShuffleButton(context: ViewContext, data: NowPlayingData) 
                 data.currentShuffleMode && smartShuffle -> Icons.Filled.AutoAwesome
                 else -> Icons.Filled.Shuffle
             },
-            null,
+            if (mood.attached) "Shuffle unavailable in a mood session" else "Shuffle",
             tint = when {
+                mood.attached -> LocalContentColor.current.copy(alpha = 0.25f)
                 data.currentShuffleMode -> LocalNowPlayingAccent.current
                 else -> LocalContentColor.current.copy(alpha = 0.6f)
             },
@@ -354,7 +357,9 @@ private fun NowPlayingShuffleButton(context: ViewContext, data: NowPlayingData) 
 @Composable
 private fun NowPlayingLoopButton(context: ViewContext, data: NowPlayingData) {
     val view = LocalView.current
+    val mood by context.symphony.moods.state.collectAsState()
     IconButton(
+        enabled = !mood.attached,
         onClick = {
             view.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
             context.symphony.radio.queue.toggleLoopMode()
@@ -366,8 +371,8 @@ private fun NowPlayingLoopButton(context: ViewContext, data: NowPlayingData) {
                 RadioQueue.LoopMode.Autoplay -> Icons.Filled.AllInclusive
                 else -> Icons.Filled.Repeat
             },
-            null,
-            tint = when (data.currentLoopMode) {
+            if (mood.attached) "Repeat unavailable in a mood session" else "Repeat",
+            tint = if (mood.attached) LocalContentColor.current.copy(alpha = 0.25f) else when (data.currentLoopMode) {
                 RadioQueue.LoopMode.None -> LocalContentColor.current.copy(alpha = 0.6f)
                 else -> LocalNowPlayingAccent.current
             },

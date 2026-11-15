@@ -5,12 +5,15 @@ import io.github.zyrouge.symphony.Symphony
 import io.github.zyrouge.symphony.services.database.entities.MixFeedback
 import io.github.zyrouge.symphony.services.groove.Song
 import io.github.zyrouge.symphony.services.radio.Radio
+import io.github.zyrouge.symphony.services.radio.RadioQueue
 import io.github.zyrouge.symphony.utils.EventUnsubscribeFn
 import io.github.zyrouge.symphony.services.diagnostics.Diagnostics
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.flow.collect
+import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import java.util.concurrent.atomic.AtomicLong
@@ -33,6 +36,8 @@ class MoodSessionController(private val symphony: Symphony) : Symphony.Hooks {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
     private val mutex = Mutex()
     private val revision = AtomicLong()
+    private val ownershipRevision = AtomicLong()
+    private val playIntentRevision = AtomicLong()
     private val prefs = symphony.applicationContext.getSharedPreferences("mood_playback", 0)
     private val mutableState = MutableStateFlow(MoodSessionState())
     val state = mutableState.asStateFlow()
@@ -43,6 +48,7 @@ class MoodSessionController(private val symphony: Symphony) : Symphony.Hooks {
     private var changingQueue = false
     private var catalogIds: List<String>? = null
     private var catalogCache: MoodCatalog? = null
+    private var lastSavedProfile: MoodProfileRow? = null
 
     private inline fun changeQueue(block: () -> Unit) {
         changingQueue = true
@@ -88,26 +94,31 @@ class MoodSessionController(private val symphony: Symphony) : Symphony.Hooks {
     private suspend fun save() {
         val profile = state.value.profile ?: return
         val run = state.value.run
+        val row = MoodJson.row(profile)
         io { db.withTransaction {
-            dao.putProfile(MoodJson.row(profile))
+            if (lastSavedProfile != row) dao.putProfile(row)
             if (run != null) dao.putRun(MoodJson.row(run.copy(updatedAt = System.currentTimeMillis())))
         } }
+        lastSavedProfile = row
     }
 
     fun create(seedIds: List<String>) {
+        val ownerToken = ownershipRevision.incrementAndGet()
         revision.incrementAndGet()
         command {
             require(seedIds.distinct().size in 1..5) { "Choose 1–5 different songs" }
             val songs = seedIds.distinct().map { symphony.groove.song.get(it) ?: error("A selected song is unavailable") }
             io { require(songs.all { embedding(it) != null }) { "Analyze every selected song first in AI indexing settings" } }
+            if (ownerToken != ownershipRevision.get()) return@command
             val profile = MoodProfile(seeds = songs.map { reference(it) })
             val run = MoodRun(profileId = profile.id, queue = profile.seeds.map { MoodQueueEntry(track = it, kind = "seed") })
-            install(profile, run, emptyList(), autostart = true)
+            if (!install(profile, run, emptyList(), autostart = true, ownerToken = ownerToken)) return@command
             refill(replace = true)
         }
     }
 
     fun resume(profileId: String, fresh: Boolean = false) {
+        val ownerToken = ownershipRevision.incrementAndGet()
         revision.incrementAndGet()
         command {
             if (attached) { snapshot(); save() }
@@ -115,7 +126,8 @@ class MoodSessionController(private val symphony: Symphony) : Symphony.Hooks {
             val visits = io { dao.visits(profileId).map(MoodJson::visit) }
             val previous = if (fresh) null else io { dao.latestRun(profileId)?.let(MoodJson::run) }
             val run = previous ?: MoodRun(profileId = profile.id)
-            install(profile, run, visits, autostart = previous != null)
+            if (ownerToken != ownershipRevision.get()) return@command
+            if (!install(profile, run, visits, autostart = previous != null, ownerToken = ownerToken)) return@command
             val needsStart = previous == null || state.value.run?.queue?.isEmpty() == true
             refill(replace = needsStart, advance = needsStart)
         }
@@ -124,28 +136,31 @@ class MoodSessionController(private val symphony: Symphony) : Symphony.Hooks {
     /** Called by the single startup queue-restoration path, never auto-starts audio. */
     suspend fun restorePlayback(): Boolean = withContext(Dispatchers.Main.immediate) {
         mutex.withLock {
+            val ownerToken = ownershipRevision.get()
             val id = prefs.getString("active_run", null) ?: return@withLock false
             try {
                 val run = io { dao.run(id)?.let(MoodJson::run) } ?: return@withLock false
                 val profile = io { dao.profile(run.profileId)?.let(MoodJson::profile) } ?: return@withLock false
                 val visits = io { dao.visits(profile.id).map(MoodJson::visit) }
-                install(profile, run, visits, autostart = false)
-                true
+                install(profile, run, visits, autostart = false, ownerToken = ownerToken)
             } catch (e: CancellationException) { throw e }
             catch (e: Exception) { Diagnostics.event("ERROR", "mood", "restore_failed", e); false }
         }
     }
 
-    private suspend fun install(profile: MoodProfile, run: MoodRun, visits: List<MoodVisit>, autostart: Boolean) {
+    private suspend fun install(profile: MoodProfile, run: MoodRun, visits: List<MoodVisit>, autostart: Boolean, ownerToken: Long): Boolean {
         if (attached) { snapshot(); save() }
+        if (ownerToken != ownershipRevision.get()) return false
         attached = false
         symphony.radio.stop(ended = false)
+        symphony.radio.queue.setShuffleMode(false)
+        symphony.radio.queue.setLoopMode(RadioQueue.LoopMode.None)
         val available = run.queue.mapNotNull { entry -> song(entry.track)?.let { entry to it.id } }
         val oldCurrent = run.queue.getOrNull(run.index)?.id
         val index = available.indexOfFirst { it.first.id == oldCurrent }.coerceAtLeast(0)
         val restored = run.copy(queue = available.map { it.first }, index = index,
             positionMs = if (available.getOrNull(index)?.first?.id == oldCurrent) run.positionMs else 0)
-        mutableState.update { it.copy(profile = profile, run = restored, visits = visits, attached = true, exhausted = false) }
+        mutableState.update { it.copy(profile = profile.copy(updatedAt = System.currentTimeMillis()), run = restored, visits = visits, attached = true, exhausted = false) }
         attached = true
         symphony.radio.playbackSource = "mood:${restored.id}"
         prefs.edit().putString("active_run", restored.id).apply()
@@ -154,6 +169,7 @@ class MoodSessionController(private val symphony: Symphony) : Symphony.Hooks {
                 index = index, autostart = autostart, startPosition = restored.positionMs))
         }
         save()
+        return attached && state.value.run?.id == run.id
     }
 
     fun react(profileId: String, track: MoodTrackRef, value: Int?) {
@@ -203,8 +219,9 @@ class MoodSessionController(private val symphony: Symphony) : Symphony.Hooks {
 
     /** Synchronous detach prevents a stale generation from taking over ordinary playback. */
     fun leavePlayback() {
-        if (!attached) return
+        ownershipRevision.incrementAndGet()
         revision.incrementAndGet()
+        if (!attached) return
         snapshot()
         attached = false
         mutableState.update { it.copy(attached = false) }
@@ -220,7 +237,7 @@ class MoodSessionController(private val symphony: Symphony) : Symphony.Hooks {
         if (radio.queue.hasSongAt(options.index)) radio.play(options, reason = "stop")
     }
 
-    fun cancelPendingAdvance() { if (attached) revision.incrementAndGet() }
+    fun cancelPendingAdvance() { if (attached) playIntentRevision.incrementAndGet() }
 
     fun playbackTag(songId: String): MoodPlaybackTag? {
         if (!attached) return null
@@ -259,8 +276,9 @@ class MoodSessionController(private val symphony: Symphony) : Symphony.Hooks {
 
     fun requestNext() {
         if (!attached) return
+        val playToken = playIntentRevision.incrementAndGet()
         revision.incrementAndGet()
-        command { if (attached) { snapshot(); refill(replace = false, advance = true) } }
+        command { if (attached) { snapshot(); refill(replace = false, advance = true, playToken = playToken) } }
     }
 
     private fun snapshot() {
@@ -282,7 +300,7 @@ class MoodSessionController(private val symphony: Symphony) : Symphony.Hooks {
     private fun embedding(song: Song) = symphony.semanticSearch.getMoodEmbedding(song.path, song.title, song.artists.joinToString(), song.duration)
         ?.let(MoodRecommender::normalized)
 
-    private suspend fun refill(replace: Boolean, advance: Boolean = false) {
+    private suspend fun refill(replace: Boolean, advance: Boolean = false, playToken: Long = playIntentRevision.get()) {
         val profile = state.value.profile ?: return
         val run = state.value.run ?: return
         if (!attached) return
@@ -338,7 +356,7 @@ class MoodSessionController(private val symphony: Symphony) : Symphony.Hooks {
                 else if (generated.isEmpty() && pinned.isEmpty()) "No more matching songs in this run. Start fresh to hear this mood again." else "") }
         changeQueue { symphony.radio.queue.replaceMoodQueue(queue.mapNotNull { song(it.track)?.id }, run.index) }
         save()
-        if (advance) {
+        if (advance && playToken == playIntentRevision.get()) {
             val next = run.index + 1
             val startAt = if (current.isEmpty()) 0 else next
             if (symphony.radio.queue.hasSongAt(startAt)) symphony.radio.play(Radio.PlayOptions(startAt), reason = "next")
@@ -347,7 +365,8 @@ class MoodSessionController(private val symphony: Symphony) : Symphony.Hooks {
     }
 
     suspend fun globalFeedback(base: List<MixFeedback>): List<MixFeedback> = io {
-        val reactions = dao.profiles().flatMap { MoodJson.profile(it).reactions.values }.mapNotNull { reaction ->
+        val reactions = dao.profiles().mapNotNull { runCatching { MoodJson.profile(it) }.getOrNull() }
+            .flatMap { it.reactions.values }.mapNotNull { reaction ->
             song(reaction.track)?.let { MixFeedback(it.id, it.title, it.artists.joinToString(), reaction.value > 0, reaction.updatedAt) }
         }
         MoodGlobalFeedback.merge(base, reactions)
@@ -360,10 +379,17 @@ class MoodSessionController(private val symphony: Symphony) : Symphony.Hooks {
     }
 
     override fun onSymphonyReady() {
-        scope.launch { dao.observeProfiles().collect { rows -> mutableState.update { it.copy(profiles = rows.map(MoodJson::profile)) } } }
+        scope.launch {
+            dao.observeProfiles().catch { e ->
+                Diagnostics.event("ERROR", "mood", "profile_load_failed", e)
+                mutableState.update { it.copy(message = "Could not load saved moods") }
+            }.collect { rows ->
+                mutableState.update { it.copy(profiles = rows.mapNotNull { row -> runCatching { MoodJson.profile(row) }.getOrNull() }) }
+            }
+        }
         unsubscribe = symphony.radio.onUpdate.subscribe { event ->
             if (attached && !changingQueue && (event is Radio.Events.Queue || event is Radio.Events.Player.Paused || event is Radio.Events.Player.Seeked)) {
-                revision.incrementAndGet()
+                if (event is Radio.Events.Queue) revision.incrementAndGet()
                 command { if (attached) { snapshot(); save() } }
             }
         }

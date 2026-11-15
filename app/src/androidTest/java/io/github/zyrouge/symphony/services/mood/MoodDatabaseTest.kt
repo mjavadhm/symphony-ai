@@ -13,6 +13,7 @@ import java.util.UUID
 class MoodDatabaseTest {
     @Test fun savedProfileRunAndFeedbackSurviveReopeningAndVisitsAreIdempotent() = runBlocking {
         val context = InstrumentationRegistry.getInstrumentation().targetContext
+        val json = Json { encodeDefaults = true }
         val name = "mood-test-${UUID.randomUUID()}"
         val track = MoodTrackRef(uri = "uri:test", path = "test.mp3", title = "Test", artists = listOf("Artist"), durationMs = 180000)
         val profile = MoodProfile(seeds = listOf(track), saved = true, reactions = mapOf(track.key to MoodReaction(track, 1)))
@@ -20,15 +21,15 @@ class MoodDatabaseTest {
         val visit = MoodVisit("one-visit", profile.id, run.id, track, 10000, 10000, "next", -0.05f)
         var db = Room.databaseBuilder(context, MoodDatabase::class.java, name).build()
         try {
-            db.dao().putProfile(MoodProfileRow(profile.id, profile.updatedAt, Json.encodeToString(profile)))
-            db.dao().putRun(MoodRunRow(run.id, profile.id, run.updatedAt, Json.encodeToString(run)))
-            val row = MoodVisitRow(visit.id, profile.id, run.id, visit.endedAt, Json.encodeToString(visit))
+            db.dao().putProfile(MoodProfileRow(profile.id, profile.updatedAt, json.encodeToString(profile)))
+            db.dao().putRun(MoodRunRow(run.id, profile.id, run.updatedAt, json.encodeToString(run)))
+            val row = MoodVisitRow(visit.id, profile.id, run.id, visit.endedAt, json.encodeToString(visit))
             assertTrue(db.dao().putVisit(row) != -1L)
             assertEquals(-1L, db.dao().putVisit(row))
             db.close()
             db = Room.databaseBuilder(context, MoodDatabase::class.java, name).build()
-            assertEquals(profile, Json.decodeFromString<MoodProfile>(db.dao().profile(profile.id)!!.payload))
-            assertEquals(run, Json.decodeFromString<MoodRun>(db.dao().latestRun(profile.id)!!.payload))
+            assertEquals(profile, json.decodeFromString<MoodProfile>(db.dao().profile(profile.id)!!.payload))
+            assertEquals(run, json.decodeFromString<MoodRun>(db.dao().latestRun(profile.id)!!.payload))
             assertEquals(1, db.dao().visits(profile.id).size)
             db.dao().deleteProfile(profile.id)
             assertNull(db.dao().run(run.id))
