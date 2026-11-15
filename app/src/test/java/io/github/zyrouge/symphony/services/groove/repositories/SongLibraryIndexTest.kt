@@ -45,7 +45,7 @@ class SongLibraryIndexTest {
         assertEquals(second, index["b"])
         assertEquals(listOf(first), index.values())
         assertEquals(listOf("a"), index.ids.value)
-        assertFalse(second.path in index.paths)
+        assertFalse(index.paths.containsKey(second.path))
         index.finishScan(setOf("a"))
         assertNull(index["b"])
     }
