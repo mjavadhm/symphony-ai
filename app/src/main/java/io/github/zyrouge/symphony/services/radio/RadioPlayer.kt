@@ -7,13 +7,21 @@ import io.github.zyrouge.symphony.Symphony
 import io.github.zyrouge.symphony.utils.Logger
 import kotlinx.coroutines.launch
 import java.util.Timer
+import io.github.zyrouge.symphony.services.mood.MoodPlaybackEvidence
+import io.github.zyrouge.symphony.services.mood.MoodPlaybackTag
+import java.util.UUID
 
 typealias RadioPlayerOnPreparedListener = () -> Unit
 typealias RadioPlayerOnPlaybackPositionListener = (RadioPlayer.PlaybackPosition) -> Unit
 typealias RadioPlayerOnFinishListener = () -> Unit
 typealias RadioPlayerOnErrorListener = (Int, Int) -> Unit
 
-class RadioPlayer(val symphony: Symphony, val id: String, val uri: Uri) {
+class RadioPlayer(val symphony: Symphony, val id: String, val uri: Uri,
+                  val source: String = "queue", val moodTag: MoodPlaybackTag? = null) {
+    val visitId = UUID.randomUUID().toString()
+    private val evidence = MoodPlaybackEvidence()
+    val coveredMs get() = evidence.coveredMs
+    @Volatile private var lastSampleNanos = 0L
     data class PlaybackPosition(val played: Long, val total: Long) {
         val ratio: Float
             get() = (played.toFloat() / total).takeIf { it.isFinite() } ?: 0f
@@ -80,6 +88,7 @@ class RadioPlayer(val symphony: Symphony, val id: String, val uri: Uri) {
             }
             ump.setOnCompletionListener {
                 if (released) return@setOnCompletionListener
+                destroyDurationTimer()
                 state = State.Finished
                 onFinish?.invoke()
             }
@@ -151,6 +160,8 @@ class RadioPlayer(val symphony: Symphony, val id: String, val uri: Uri) {
     }
 
     fun seek(to: Int) = mediaPlayer?.let {
+        evidence.resetPosition()
+        lastSampleNanos = System.nanoTime()
         it.seekTo(to)
         emitPlaybackPosition()
     }
@@ -244,15 +255,20 @@ class RadioPlayer(val symphony: Symphony, val id: String, val uri: Uri) {
         onError = listener
     }
 
-    var activelyPlayedMs: Long = 0
-        private set
+    val activelyPlayedMs get() = evidence.listenedMs
 
     private fun createDurationTimer() {
         // onPrepared and start() both create one; cancel the old one so its thread
         // doesn't leak and double-count activelyPlayedMs.
         destroyDurationTimer()
+        evidence.resetPosition(playbackPosition?.played)
+        lastSampleNanos = System.nanoTime()
         playbackPositionUpdater = kotlin.concurrent.timer(period = 100L) {
-            activelyPlayedMs += 100
+            val now = System.nanoTime()
+            val elapsed = ((now - lastSampleNanos) / 1_000_000).coerceAtLeast(0)
+            lastSampleNanos = now
+            val position = playbackPosition?.played
+            evidence.sample(position, elapsed, runCatching { isPlaying }.getOrDefault(false), speed)
             emitPlaybackPosition()
         }
     }

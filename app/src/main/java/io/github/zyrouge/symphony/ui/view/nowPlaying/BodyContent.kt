@@ -97,6 +97,7 @@ fun NowPlayingBodyContent(
 
     data.run {
         Column {
+            io.github.zyrouge.symphony.ui.view.mood.MoodPlayerReactions(context, song.id)
             if (showSongInfo) Row {
                 AnimatedContent(
                     label = "now-playing-body-content",

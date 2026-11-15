@@ -97,8 +97,8 @@ class Radio(private val symphony: Symphony) : Symphony.Hooks {
         val startPosition: Long? = null,
     )
 
-    fun play(options: PlayOptions) {
-        stopCurrentSong()
+    fun play(options: PlayOptions, reason: String = "jump") {
+        stopCurrentSong(reason)
         val song = queue.getSongIdAt(options.index)?.let { symphony.groove.song.get(it) }
         if (song == null) {
             onSongFinish(SongFinishSource.Exception)
@@ -108,13 +108,13 @@ class Radio(private val symphony: Symphony) : Symphony.Hooks {
             queue.currentSongIndex = options.index
             player = nextPlayer?.takeIf {
                 when {
-                    it.id == song.id -> true
+                    it.id == song.id && it.source == playbackSource -> true
                     else -> {
                         it.destroy()
                         false
                     }
                 }
-            } ?: RadioPlayer(symphony, song.id, song.uri)
+            } ?: RadioPlayer(symphony, song.id, song.uri, playbackSource, symphony.moods.playbackTag(song.id))
             nextPlayer = null
             player!!.setOnPreparedListener {
                 options.startPosition?.let {
@@ -173,7 +173,7 @@ class Radio(private val symphony: Symphony) : Symphony.Hooks {
         }
         try {
             nextPlayer?.destroy()
-            nextPlayer = RadioPlayer(symphony, song.id, song.uri).also {
+            nextPlayer = RadioPlayer(symphony, song.id, song.uri, playbackSource, symphony.moods.playbackTag(song.id)).also {
                 it.prepare()
             }
         } catch (err: Exception) {
@@ -210,6 +210,7 @@ class Radio(private val symphony: Symphony) : Symphony.Hooks {
     fun pause() = pause {}
 
     private fun pause(forceFade: Boolean = false, onFinish: () -> Unit) {
+        symphony.moods.cancelPendingAdvance()
         player?.let {
             if (!it.isPlaying) {
                 return@let
@@ -227,6 +228,7 @@ class Radio(private val symphony: Symphony) : Symphony.Hooks {
     }
 
     fun pauseInstant() {
+        symphony.moods.cancelPendingAdvance()
         player?.let {
             it.pause()
             onUpdate.dispatch(Events.Player.Paused)
@@ -234,8 +236,11 @@ class Radio(private val symphony: Symphony) : Symphony.Hooks {
     }
 
     fun stop(ended: Boolean = true) {
+        symphony.moods.leavePlayback()
         val wasSongRadio = autoplaySession.reset()
         stopCurrentSong()
+        nextPlayer?.destroy()
+        nextPlayer = null
         playbackSource = "queue"
         queue.reset()
         if (wasSongRadio) queue.setLoopMode(RadioQueue.LoopMode.None)
@@ -247,7 +252,7 @@ class Radio(private val symphony: Symphony) : Symphony.Hooks {
 
     fun jumpTo(index: Int) = play(PlayOptions(index = index))
     fun jumpToPrevious() = jumpTo(queue.currentSongIndex - 1)
-    fun jumpToNext() = jumpTo(queue.currentSongIndex + 1)
+    fun jumpToNext() = play(PlayOptions(index = queue.currentSongIndex + 1), reason = "next")
     fun canJumpToPrevious() = queue.hasSongAt(queue.currentSongIndex - 1)
     fun canJumpToNext() = queue.hasSongAt(queue.currentSongIndex + 1)
 
@@ -330,17 +335,18 @@ class Radio(private val symphony: Symphony) : Symphony.Hooks {
         onUpdate.dispatch(Events.QueueOption.PauseOnCurrentSongEndChanged)
     }
 
-    private fun stopCurrentSong() {
+    private fun stopCurrentSong(reason: String = "stop") {
         player?.let { p ->
             player = null
             p.setOnPlaybackPositionListener {}
+            p.moodTag?.let { tag -> symphony.moods.recordVisit(tag, p.visitId, p.activelyPlayedMs, p.coveredMs, reason) }
             
             // Log playback history (only from 5 seconds up — skips get recorded too)
             if (p.activelyPlayedMs >= 5_000) {
                 val playedMs = p.activelyPlayedMs
                 val song = symphony.groove.song.get(p.id)
                 // Snapshot before another queue/session changes these mutable values.
-                val source = playbackSource
+                val source = if (p.moodTag != null) "mood:${p.moodTag.runId}:${p.visitId}" else p.source
                 val shuffled = queue.currentShuffleMode
                 val loopMode = queue.currentLoopMode.name
                 symphony.groove.coroutineScope.launch {
@@ -389,9 +395,18 @@ class Radio(private val symphony: Symphony) : Symphony.Hooks {
     }
 
     private fun onSongFinish(source: SongFinishSource) {
-        stopCurrentSong()
+        stopCurrentSong(if (source == SongFinishSource.Finish) "end" else "error")
         if (queue.isEmpty()) {
             queue.currentSongIndex = -1
+            return
+        }
+        if (symphony.moods.attached) {
+            if (source == SongFinishSource.Exception) {
+                play(PlayOptions(queue.currentSongIndex), reason = "error")
+            } else if (pauseOnCurrentSongEnd) {
+                setPauseOnCurrentSongEnd(false)
+                if (queue.hasSongAt(queue.currentSongIndex + 1)) play(PlayOptions(queue.currentSongIndex + 1, autostart = false), reason = "end")
+            } else symphony.moods.requestNext()
             return
         }
         // Autoplay: the queue ran out → instead of stopping, keep going with similar songs
@@ -520,7 +535,7 @@ class Radio(private val symphony: Symphony) : Symphony.Hooks {
     private fun attachGrooveListener() {
         symphony.groove.coroutineScope.launch {
             symphony.groove.readyDeferred.await()
-            restorePreviousQueue()
+            if (!symphony.moods.restorePlayback()) restorePreviousQueue()
         }
     }
 

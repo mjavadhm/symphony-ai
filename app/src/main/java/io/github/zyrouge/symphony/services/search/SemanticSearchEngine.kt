@@ -466,6 +466,9 @@ class SemanticSearchEngine(val symphony: Symphony) : Symphony.Hooks {
     fun getTrackEmbedding(title: String, artist: String) =
         repository?.findTrackEmbedding(title, artist)
 
+    fun getMoodEmbedding(path: String, title: String, artist: String, durationMs: Long) =
+        repository?.findMoodEmbedding(path, title, artist, durationMs)
+
     fun searchByVector(vector: FloatArray, limit: Int) =
         repository?.searchByVector(vector, limit) ?: emptyList()
 }

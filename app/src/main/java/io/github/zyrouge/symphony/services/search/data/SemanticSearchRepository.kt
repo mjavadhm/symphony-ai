@@ -294,6 +294,18 @@ class SemanticSearchRepository(boxStore: BoxStore) {
         } ?: candidates.first()).meanEmbedding
     }
 
+    /** Mood sessions must not silently use an arbitrary same-title recording. */
+    fun findMoodEmbedding(path: String, title: String, artist: String, durationMs: Long): FloatArray? {
+        val byPath = trackBox.query(TrackEntity_.filePath.equal(path)).build().use { it.find() }
+        if (byPath.isNotEmpty()) return byPath.singleOrNull()?.meanEmbedding
+        val candidates = trackBox.query(TrackEntity_.title.equal(title, QueryBuilder.StringOrder.CASE_INSENSITIVE))
+            .build().use { it.find() }.filter {
+                normalizeKey(it.artist.orEmpty()) == normalizeKey(artist) &&
+                    kotlin.math.abs(it.durationSeconds * 1000L - durationMs) <= 3000
+            }
+        return candidates.singleOrNull()?.meanEmbedding
+    }
+
     /** Direct search by vector — the core of Daily Mix */
     fun searchByVector(vector: FloatArray, limit: Int): List<TrackEntity> {
         return trackBox.query(

@@ -69,7 +69,8 @@ class RecommendationEngine(private val symphony: Symphony) {
     // ---------------------------------------------------------------
     // Daily Mixes (several of them, via clustering) — cached for one day
     // ---------------------------------------------------------------
-    private var memoryCache: Pair<String, List<DailyMix>>? = null
+    @Volatile private var memoryCache: Pair<String, List<DailyMix>>? = null
+    private val feedbackRevision = java.util.concurrent.atomic.AtomicLong()
 
     // Salt used for reroll; kept in memory only. Key = mix id
     private val mixSalts = mutableMapOf<Long, Long>()
@@ -95,7 +96,9 @@ class RecommendationEngine(private val symphony: Symphony) {
                 }
             }
         }
+        val revision = feedbackRevision.get()
         val mixes = generateDailyMixes()
+        if (revision != feedbackRevision.get()) return mixes
         memoryCache = key to mixes
         prefs.edit()
             .putString(KEY_DAILY_DATE, key)
@@ -123,15 +126,16 @@ class RecommendationEngine(private val symphony: Symphony) {
             symphony.database.playbackHistory.getAllPlayedSongIds().toSet()
         } catch (e: Exception) { emptySet() }
         val skippedIds = try {
-            symphony.database.playbackHistory.getRecentlySkippedSongIds(
-                System.currentTimeMillis() - SKIP_EXCLUDE_DAYS * 86_400_000L
-            ).toSet()
+            val rows = symphony.database.playbackHistory.getHistorySince(System.currentTimeMillis() - SKIP_EXCLUDE_DAYS * 86_400_000L)
+            rows.filter { row ->
+                if (row.source.startsWith("mood:")) (symphony.moods.historySignal(row.source) ?: 0f) < 0f else row.skipped
+            }.map { it.songId }.toSet()
         } catch (e: Exception) { emptySet() }
-        val dislikedIds = try {
-            symphony.database.mixFeedback.getAll().filter { !it.liked }.map { it.songId }.toSet()
-        } catch (e: Exception) { emptySet() }
+        val feedback = effectiveFeedback()
+        val dislikedIds = feedback.filter { !it.liked }.map { it.songId }.toSet()
+        val likedIds = feedback.filter { it.liked }.map { it.songId }.toSet()
 
-        val exclude = skippedIds + dislikedIds
+        val exclude = (skippedIds - likedIds) + dislikedIds
         val positive = points.filter { it.weight > 0f }
 
         // Cluster only when there is enough data; otherwise fall back to a single vector
@@ -197,19 +201,25 @@ class RecommendationEngine(private val symphony: Symphony) {
         val halfLifeMs = recencyHalfLifeDays * 86_400_000f
         val cache = HashMap<String, FloatArray?>()
         val points = mutableListOf<TastePoint>()
+        val feedback = effectiveFeedback()
 
         for (rec in filtered) {
             if (rec.title.isBlank()) continue
+            if (io.github.zyrouge.symphony.services.mood.MoodGlobalFeedback.overridesHistory(feedback, rec.songId, rec.title, rec.artist)) continue
             val emb = cache.getOrPut("${rec.title}|${rec.artist}".lowercase()) {
                 symphony.semanticSearch.getTrackEmbedding(rec.title, rec.artist)
             } ?: continue
             val recency = 0.5f.pow((now - rec.playedAt) / halfLifeMs)
-            val weight = if (rec.skipped) -0.5f * recency else rec.completionRate * recency
+            val moodSignal = symphony.moods.historySignal(rec.source)
+            // A mood visit is interpreted once using its duration-aware evidence, not again as a legacy skip.
+            if (rec.source.startsWith("mood:") && moodSignal == null) continue
+            val weight = if (moodSignal != null) moodSignal * recency
+                else if (rec.skipped) -0.5f * recency else rec.completionRate * recency
             points.add(TastePoint(emb, weight))
         }
         // Explicit user feedback — the strongest signal
         try {
-            for (fb in symphony.database.mixFeedback.getAll()) {
+            for (fb in feedback) {
                 val emb = cache.getOrPut("${fb.title}|${fb.artist}".lowercase()) {
                     symphony.semanticSearch.getTrackEmbedding(fb.title, fb.artist)
                 } ?: continue
@@ -342,7 +352,7 @@ class RecommendationEngine(private val symphony: Symphony) {
             symphony.database.playbackHistory.getAllPlayedSongIds().toSet()
         } catch (e: Exception) { emptySet() }
         val dislikedIds = try {
-            symphony.database.mixFeedback.getAll().filter { !it.liked }.map { it.songId }.toSet()
+            effectiveFeedback().filter { !it.liked }.map { it.songId }.toSet()
         } catch (e: Exception) { emptySet() }
         return generateMixFromVector(vector, dailyMixSize, playedIds, dislikedIds)
     }
@@ -553,15 +563,25 @@ class RecommendationEngine(private val symphony: Symphony) {
                     liked = liked,
                 )
             )
+            invalidateMoodFeedback()
         } catch (e: Exception) {
             Logger.error("RecommendationEngine", "setFeedback failed", e)
         }
     }
 
+    private suspend fun effectiveFeedback() = symphony.moods.globalFeedback(symphony.database.mixFeedback.getAll())
+
+    fun invalidateMoodFeedback() {
+        feedbackRevision.incrementAndGet()
+        memoryCache = null
+        prefs.edit().remove(KEY_DAILY_DATE).remove(KEY_DAILY_DATA).apply()
+        synchronized(coverCache) { coverCache.clear() }
+    }
+
     // ---------------------------------------------------------------
     // Mood / Custom Mixes  (unchanged)
     // ---------------------------------------------------------------
-    private val coverCache = HashMap<String, List<String>>()
+    private val coverCache = java.util.concurrent.ConcurrentHashMap<String, List<String>>()
 
     suspend fun getMixCoverSongIds(mix: CustomMix): List<String> {
         coverCache[mix.prompt]?.let { return it }

@@ -10,6 +10,7 @@ workflows:
         - pattern: 'main'
         - pattern: 'master'
         - pattern: 'codex/fix-queue-download-library'
+        - pattern: 'codex/experimental-mood-session'
         
     environment:
       java: 17
@@ -29,7 +30,8 @@ workflows:
           npm run i18n:build
         
       - name: Run Unit Tests and Build Debug APK
-        script: ./gradlew clean :app:testDebugUnitTest assembleDebug --stacktrace --info --max-workers=2
+        script: ./gradlew clean :app:testDebugUnitTest :app:assembleDebugAndroidTest assembleDebug --stacktrace --info --max-workers=2
+        test_report: app/build/test-results/testDebugUnitTest/*.xml
 
       - name: Send APK to Telegram
         script: |
@@ -47,4 +49,5 @@ workflows:
     artifacts:
       - app/build/reports/tests/testDebugUnitTest/**
       - app/build/test-results/testDebugUnitTest/*.xml
+      - app/build/outputs/apk/androidTest/debug/*.apk
       - app/build/outputs/apk/debug/*.apk

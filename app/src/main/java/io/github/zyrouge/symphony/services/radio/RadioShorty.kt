@@ -47,6 +47,11 @@ class RadioShorty(private val symphony: Symphony) {
                 true
             }
 
+            symphony.moods.attached -> {
+                symphony.moods.requestNext()
+                true
+            }
+
             symphony.radio.queue.currentLoopMode == RadioQueue.LoopMode.Autoplay -> {
                 symphony.radio.extendQueueForAutoplay()
                 true

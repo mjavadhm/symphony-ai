@@ -41,6 +41,7 @@ class RadioQueue(private val symphony: Symphony) {
     val smartShuffleMode = MutableStateFlow(false)
 
     fun cycleShuffleMode() {
+        if (symphony.moods.attached) return
         when {
             !currentShuffleMode -> setShuffleMode(true)   // off → normal shuffle
             !smartShuffleMode.value -> enableSmartShuffle() // normal → smart
@@ -49,6 +50,7 @@ class RadioQueue(private val symphony: Symphony) {
     }
 
     fun enableSmartShuffle() {
+        if (symphony.moods.attached) return
         if (currentQueue.isEmpty()) {
             return
         }
@@ -70,6 +72,7 @@ class RadioQueue(private val symphony: Symphony) {
     }
 
     fun applyFlowOrder() {
+        if (symphony.moods.attached) return
         val ids = currentQueue.toList()
         if (ids.size <= 2) return
         val currentSongId = ids.getOrNull(currentSongIndex)
@@ -154,6 +157,7 @@ class RadioQueue(private val symphony: Symphony) {
     }
 
     fun setLoopMode(loopMode: LoopMode) {
+        if (symphony.moods.attached && loopMode != LoopMode.None) return
         currentLoopMode = loopMode
     }
 
@@ -165,6 +169,7 @@ class RadioQueue(private val symphony: Symphony) {
     fun toggleShuffleMode() = setShuffleMode(!currentShuffleMode)
 
     fun setShuffleMode(to: Boolean) {
+        if (symphony.moods.attached && to) return
         smartShuffleMode.value = false
         currentShuffleMode = to
         if (currentQueue.isNotEmpty()) {
@@ -187,6 +192,14 @@ class RadioQueue(private val symphony: Symphony) {
     }
 
     fun isEmpty() = originalQueue.isEmpty()
+
+    internal fun replaceMoodQueue(songIds: List<String>, index: Int) {
+        if (!symphony.moods.attached) return
+        originalQueue.clear(); originalQueue.addAll(songIds)
+        currentQueue.clear(); currentQueue.addAll(songIds)
+        currentSongIndex = if (songIds.isEmpty()) -1 else index.coerceIn(songIds.indices)
+        symphony.radio.onUpdate.dispatch(Radio.Events.Queue.Modified)
+    }
 
     data class Serialized(
         val currentSongIndex: Int,

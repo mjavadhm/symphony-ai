@@ -61,6 +61,9 @@ fun BaseView(symphony: Symphony, activity: MainActivity) {
                 navController = navController,
                 startDestination = HomeViewRoute,
             ) {
+                baseComposable<io.github.zyrouge.symphony.ui.view.mood.MoodSessionsRoute> {
+                    io.github.zyrouge.symphony.ui.view.mood.MoodSessionsView(context)
+                }
                 baseComposable<io.github.zyrouge.symphony.ui.view.companion.SongCompanionRoute> {
                     io.github.zyrouge.symphony.ui.view.companion.SongCompanionView(context, it.toRoute())
                 }

@@ -65,6 +65,16 @@ fun DiscoverView(context: ViewContext) {
         contentPadding = LocalHomeContentPadding.current,
     ) {
             item {
+                GlassSurface(Modifier.fillMaxWidth().padding(vertical = 8.dp), shape = RoundedCornerShape(20.dp)) {
+                    Column(Modifier.fillMaxWidth().clickable {
+                        context.navController.navigate(io.github.zyrouge.symphony.ui.view.mood.MoodSessionsRoute)
+                    }.padding(16.dp)) {
+                        Text("Mood Session · Experimental", style = MaterialTheme.typography.titleMedium)
+                        Text("Choose a few songs, react as you listen, and save the mood for later.", style = MaterialTheme.typography.bodyMedium)
+                    }
+                }
+            }
+            item {
                 if (context.symphony.llm.isConfigured &&
                     context.symphony.llm.usageMode != io.github.zyrouge.symphony.services.llm.LlmClient.UsageMode.Off
                 ) {
